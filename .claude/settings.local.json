@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -sL \"https://www.svgrepo.com/download/438679/microphone.svg\" -o mic.svg)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/mic.svg\" -o mic.svg)",
+      "Bash(./run.sh *)",
+      "Skill(update-config)"
+    ]
+  }
+}
