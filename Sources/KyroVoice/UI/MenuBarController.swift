@@ -30,6 +30,7 @@ public final class MenuBarController {
 
     private func configureButton() {
         if let button = statusItem.button {
+            button.title = "KV"
             button.image = NSImage(systemSymbolName: "mic.circle", accessibilityDescription: "KyroVoice")
             button.image?.isTemplate = true
             button.toolTip = "KyroVoice — local voice dictation"
@@ -61,7 +62,9 @@ public final class MenuBarController {
                     button.image?.isTemplate = true
                     button.contentTintColor = recording ? .systemRed : nil
                 }
-                self.startStopItem?.title = recording ? "Stop dictation" : "Start dictation"
+                
+                let isPushToTalk = self.settings.hotkeyMode == .pushToTalk
+                self.startStopItem?.title = recording ? "Stop dictation" : (isPushToTalk ? "Hold ⌘⇧Space to dictation" : "Start dictation")
             }
             .store(in: &cancellables)
     }

@@ -1,10 +1,12 @@
 import Foundation
 import AppKit
 import SwiftUI
+import Combine
 
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = SettingsStore.shared
+    private var cancellables = Set<AnyCancellable>()
 
     private var hotkey: HotkeyManager!
     private var recorder: AudioRecorder!
@@ -42,6 +44,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             overlay: overlay
         )
         menuBar = MenuBarController(coordinator: coordinator, settings: settings)
+
+        settings.$injectionStrategy
+            .dropFirst()
+            .sink { [weak self] strategy in
+                self?.injector.setStrategy(strategy)
+            }
+            .store(in: &cancellables)
 
         // Prepare audio engine + request mic permission on launch.
         Task {

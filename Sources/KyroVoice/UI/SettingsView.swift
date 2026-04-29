@@ -133,12 +133,31 @@ struct SettingsView: View {
             permissionRow(
                 title: "Input Monitoring",
                 status: permissions.inputMonitoring,
-                action: "Open Settings",
-                onAction: permissions.openSystemSettingsInputMonitoring,
+                action: "Request",
+                onAction: permissions.requestInputMonitoring,
                 onOpen: permissions.openSystemSettingsInputMonitoring
             )
 
-            HStack {
+            HStack(spacing: 6) {
+                Text("App folder")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(Bundle.main.bundleURL.deletingLastPathComponent().path)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(
+                        Bundle.main.bundleURL.deletingLastPathComponent().path,
+                        forType: .string
+                    )
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Copy path")
                 Spacer()
                 Button("Refresh") { permissions.refresh() }
             }

@@ -11,10 +11,16 @@ let package = Package(
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0")
     ],
     targets: [
+        .target(
+            name: "KyroVoiceObjC",
+            path: "Sources/KyroVoiceObjC",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "KyroVoice",
             dependencies: [
-                .product(name: "WhisperKit", package: "WhisperKit")
+                .product(name: "WhisperKit", package: "WhisperKit"),
+                "KyroVoiceObjC"
             ],
             path: "Sources/KyroVoice"
         )

@@ -6,10 +6,7 @@ cd "$(dirname "$0")"
 
 APP_BUNDLE=".build/KyroVoice.app"
 
-if [ ! -d "$APP_BUNDLE" ]; then
-    echo "Bundle not found. Running ./build.sh first…"
-    ./build.sh
-fi
+./build.sh
 
 if pgrep -x KyroVoice >/dev/null; then
     echo "==> Killing existing KyroVoice instance…"
@@ -26,4 +23,5 @@ if pgrep -x KyroVoice >/dev/null; then
 fi
 
 open -n "$APP_BUNDLE"
-echo "==> KyroVoice launched. Look for the mic icon in your menu bar."
+echo "==> KyroVoice launched. Click the menu bar mic icon → “Settings…” to configure."
+echo "   (⌘, also opens Settings when KyroVoice is the active app.)"

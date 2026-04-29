@@ -41,7 +41,9 @@ public final class FloatingOverlay {
 
     private func ensurePanel() {
         guard panel == nil else { return }
-        let rect = NSRect(x: 0, y: 0, width: 156, height: 48)
+        // Wide enough for error messages; transparent background makes
+        // unused space invisible and ignoresMouseEvents keeps it click-through.
+        let rect = NSRect(x: 0, y: 0, width: 300, height: 44)
         let p = NSPanel(
             contentRect: rect,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -61,13 +63,12 @@ public final class FloatingOverlay {
         host.frame = rect
         p.contentView = host
 
-        // Position top-right of the main screen.
         if let screen = NSScreen.main {
             let visible = screen.visibleFrame
-            let inset: CGFloat = 16
+            let inset: CGFloat = 24
             let origin = NSPoint(
-                x: visible.maxX - rect.width - inset,
-                y: visible.maxY - rect.height - inset
+                x: visible.origin.x + (visible.width - rect.width) / 2,
+                y: visible.origin.y + inset
             )
             p.setFrameOrigin(origin)
         }
@@ -82,23 +83,36 @@ struct OverlayView: View {
     @ObservedObject var state: OverlayState
 
     var body: some View {
-        HStack(spacing: 10) {
-            iconView
-            WaveformBars(levels: state.levels, tint: tint)
-                .frame(width: 70, height: 22)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .frame(width: 156, height: 48)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
+        ZStack {
+            if state.phase != .hidden {
+                HStack(spacing: 10) {
+                    iconView
+                    if case .error(let msg) = state.phase {
+                        Text(msg)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.orange)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 200, alignment: .leading)
+                    } else {
+                        WaveformBars(levels: state.levels, tint: tint)
+                            .frame(width: 45, height: 18)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
                 )
-        )
-        .opacity(state.phase == .hidden ? 0 : 1)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.18), value: state.phase)
     }
 
@@ -153,11 +167,11 @@ struct WaveformBars: View {
                 ForEach(levels.indices, id: \.self) { i in
                     Capsule()
                         .fill(tint.opacity(0.85))
-                        .frame(width: 4, height: max(3, CGFloat(levels[i]) * geo.size.height))
+                        .frame(width: 3, height: max(3, CGFloat(levels[i]) * geo.size.height * 1.5))
                         .animation(.easeOut(duration: 0.08), value: levels[i])
                 }
             }
-            .frame(height: geo.size.height, alignment: .center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 }

@@ -59,7 +59,7 @@ public final class SettingsStore: ObservableObject {
             self.hotkey = .default
         }
 
-        self.hotkeyMode          = HotkeyMode(rawValue: hkMode) ?? .pushToTalk
+        self.hotkeyMode          = .pushToTalk
         self.cloudCleanupEnabled = defaults.bool(forKey: Key.cloudCleanup)
         self.injectionStrategy   = InjectionStrategyKind(rawValue: injRaw) ?? .pasteboard
     }

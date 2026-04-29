@@ -32,8 +32,29 @@ for bundle in "$RELEASE_DIR"/*.bundle; do
 done
 
 echo "==> Ad-hoc codesign"
-codesign --force --deep --sign - \
-    --entitlements "$ENTITLEMENTS" \
-    "$APP_BUNDLE"
+
+# Use a persistent self-signed identity if available (keeps TCC grants
+# across rebuilds). Fall back to ad-hoc signing with a warning.
+IDENTITY="KyroVoice Dev"
+BUILD_KC="$HOME/Library/Keychains/kyro-build.keychain-db"
+KC_PASS="kyro-build-pass"
+
+if [ -f "$BUILD_KC" ]; then
+    security unlock-keychain -p "$KC_PASS" "$BUILD_KC" 2>/dev/null || true
+fi
+
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+    codesign --force --deep --sign "$IDENTITY" \
+        --entitlements "$ENTITLEMENTS" \
+        "$APP_BUNDLE"
+else
+    echo "    WARNING: No persistent '$IDENTITY' identity found."
+    echo "    Run ./setup_deps.sh once to create one."
+    echo "    Until then, TCC permissions (Accessibility/Input Monitoring)"
+    echo "    will be lost on every rebuild."
+    codesign --force --deep --sign - \
+        --entitlements "$ENTITLEMENTS" \
+        "$APP_BUNDLE"
+fi
 
 echo "==> Done. Built: $APP_BUNDLE"

@@ -29,6 +29,8 @@ public final class PermissionsService: ObservableObject {
     @Published public private(set) var accessibility: PermissionStatus = .notDetermined
     @Published public private(set) var inputMonitoring: PermissionStatus = .notDetermined
 
+    private static let promptedKey = "KyroVoice.accessibilityPrompter"
+
     public init() { refresh() }
 
     public func refresh() {
@@ -47,12 +49,27 @@ public final class PermissionsService: ObservableObject {
         refresh()
     }
 
-    /// Prompts the AX permission dialog if not yet decided.
     public func requestAccessibility() {
+        UserDefaults.standard.set(true, forKey: Self.promptedKey)
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
         let opts: CFDictionary = [key: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(opts)
         refresh()
+    }
+
+    /// Triggers the Input Monitoring permission dialog via CoreGraphics.
+    /// If TCC already has a "denied" record, the dialog cannot be re-shown;
+    /// open System Settings directly instead.
+    public func requestInputMonitoring() {
+        // kIOHIDAccessTypeDenied means TCC recorded an explicit denial.
+        // CGRequestListenEventAccess() silently returns false in that state —
+        // the only recovery path is the System Settings pane.
+        if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeDenied {
+            openSystemSettingsInputMonitoring()
+        } else {
+            let _ = CGRequestListenEventAccess()
+            refresh()
+        }
     }
 
     public func openSystemSettingsAccessibility() {
@@ -84,18 +101,24 @@ public final class PermissionsService: ObservableObject {
     }
 
     private static func accessibilityStatus() -> PermissionStatus {
-        AXIsProcessTrusted() ? .granted : .denied
+        if AXIsProcessTrusted() { return .granted }
+        let prompted = UserDefaults.standard.bool(forKey: Self.promptedKey)
+        return prompted ? .denied : .notDetermined
     }
 
-    /// Probe Input Monitoring by attempting to create a CGEvent source.
-    /// On 10.15+ this requires the user to add the app to Input Monitoring.
+    /// Probe Input Monitoring status.
     private static func inputMonitoringStatus() -> PermissionStatus {
-        let access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
-        switch access {
-        case kIOHIDAccessTypeGranted: return .granted
-        case kIOHIDAccessTypeDenied:  return .denied
-        case kIOHIDAccessTypeUnknown: return .notDetermined
-        default:                      return .unknown
+        if CGPreflightListenEventAccess() { return .granted }
+
+        // Accessibility trust grants CGEvent access and makes Carbon hotkeys work,
+        // so Input Monitoring is functionally covered when AX is trusted.
+        if AXIsProcessTrusted() { return .granted }
+
+        switch IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) {
+        case kIOHIDAccessTypeGranted:  return .granted
+        case kIOHIDAccessTypeDenied:   return .denied
+        case kIOHIDAccessTypeUnknown:  return .notDetermined
+        default:                       return .unknown
         }
     }
 }

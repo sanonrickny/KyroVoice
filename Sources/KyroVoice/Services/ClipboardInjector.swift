@@ -27,12 +27,17 @@ public enum InjectionError: Error, LocalizedError {
 /// - Default: pasteboard + simulated ⌘V (works almost everywhere).
 /// - AX: direct Accessibility insertion (works in Cocoa apps but unreliable in Electron/web).
 public final class ClipboardInjector {
-    private let strategy: InjectionStrategyKind
+    /// Kept in sync with `SettingsStore.injectionStrategy` (see `AppDelegate`).
+    private var strategy: InjectionStrategyKind
     private let restoreDelay: TimeInterval
 
     public init(strategy: InjectionStrategyKind = .pasteboard, restoreDelay: TimeInterval = 0.20) {
         self.strategy = strategy
         self.restoreDelay = restoreDelay
+    }
+
+    public func setStrategy(_ strategy: InjectionStrategyKind) {
+        self.strategy = strategy
     }
 
     public var hasAccessibilityPermission: Bool {
