@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import WhisperKit
 
 @MainActor
 public final class SettingsWindow {
@@ -38,6 +39,10 @@ final class PermissionsHolder {
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var permissions: PermissionsService
+
+    @State private var downloadingVariant: ModelVariant? = nil
+    @State private var downloadTask: Task<Void, Never>? = nil
+    @State private var downloadError: String? = nil
 
     var body: some View {
         TabView {
@@ -99,17 +104,136 @@ struct SettingsView: View {
     // MARK: - Models
 
     private var modelsTab: some View {
-        Form {
-            Picker("Whisper model", selection: $settings.model) {
-                ForEach(ModelVariant.allCases) { v in
-                    Text(v.displayName).tag(v)
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(ModelVariant.allCases) { variant in
+                modelCard(variant)
             }
-            Text("Model files are downloaded once on first use into ~/Library/Application Support/KyroVoice/Models. The download is ≈\(settings.model.approxDownloadMB) MB.")
+
+            if let error = downloadError {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                .padding(.top, 2)
+            }
+
+            Spacer()
+
+            Text("Small models download automatically on first use. Large v3 Turbo must be downloaded manually before selection.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding()
+    }
+
+    private func modelCard(_ variant: ModelVariant) -> some View {
+        let isActive          = settings.model == variant
+        let isReady           = settings.isReadyToUse(variant)
+        let isDownloadingThis = downloadingVariant == variant
+
+        return HStack(spacing: 12) {
+            Button {
+                guard isReady else { return }
+                settings.model = variant
+            } label: {
+                Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isActive ? Color.accentColor : (isReady ? Color.primary : Color.secondary))
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+            .disabled(!isReady)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(variant.displayName)
+                    .fontWeight(isActive ? .semibold : .regular)
+                Text(variant.shortDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if isDownloadingThis {
+                HStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.75)
+                    Text("Downloading…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Cancel") {
+                        downloadTask?.cancel()
+                        downloadTask = nil
+                        downloadingVariant = nil
+                    }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
+                }
+            } else if isActive {
+                Text("Active")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.15)))
+                    .foregroundStyle(.green)
+            } else if isReady {
+                Text("Downloaded")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Button("Download  \(variant.approxDownloadMB) MB") {
+                    startDownload(variant)
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+                .disabled(downloadingVariant != nil)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isActive
+                      ? Color.accentColor.opacity(0.07)
+                      : Color(NSColor.controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isActive ? Color.accentColor.opacity(0.25) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    private func startDownload(_ variant: ModelVariant) {
+        downloadingVariant = variant
+        downloadError = nil
+        downloadTask = Task {
+            do {
+                let config = WhisperKitConfig(
+                    model: variant.rawValue,
+                    verbose: false,
+                    logLevel: .error,
+                    prewarm: false,
+                    load: false,
+                    download: true
+                )
+                _ = try await WhisperKit(config)
+                guard !Task.isCancelled else { return }
+                settings.markDownloaded(variant)
+                settings.model = variant
+                downloadingVariant = nil
+                downloadTask = nil
+            } catch is CancellationError {
+                downloadingVariant = nil
+                downloadTask = nil
+            } catch {
+                downloadError = error.localizedDescription
+                downloadingVariant = nil
+                downloadTask = nil
+            }
+        }
     }
 
     // MARK: - Permissions

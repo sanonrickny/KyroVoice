@@ -18,6 +18,7 @@ public final class SettingsStore: ObservableObject {
         static let cloudCleanup     = "kv.cloudCleanup"
         static let injectionMode    = "kv.injection.mode"
         static let perAppOverrides  = "kv.perAppOverrides"
+        static let downloadedModels = "kv.downloadedModels"
     }
 
     @Published public var mode: DictationMode {
@@ -41,16 +42,29 @@ public final class SettingsStore: ObservableObject {
     @Published public var injectionStrategy: InjectionStrategyKind {
         didSet { defaults.set(injectionStrategy.rawValue, forKey: Key.injectionMode) }
     }
+    @Published public var downloadedModels: Set<String> {
+        didSet { defaults.set(Array(downloadedModels), forKey: Key.downloadedModels) }
+    }
 
     private init() {
-        let modeRaw  = defaults.string(forKey: Key.mode)  ?? DictationMode.normal.rawValue
-        let modelRaw = defaults.string(forKey: Key.model) ?? ModelVariant.smallEN.rawValue
-        let kc     = defaults.object(forKey: Key.hotkeyKeyCode)   as? Int
-        let mods   = defaults.object(forKey: Key.hotkeyModifiers) as? Int
-        let injRaw = defaults.string(forKey: Key.injectionMode) ?? InjectionStrategyKind.pasteboard.rawValue
+        let modeRaw      = defaults.string(forKey: Key.mode)  ?? DictationMode.normal.rawValue
+        let modelRaw     = defaults.string(forKey: Key.model) ?? ModelVariant.smallEN.rawValue
+        let kc           = defaults.object(forKey: Key.hotkeyKeyCode)   as? Int
+        let mods         = defaults.object(forKey: Key.hotkeyModifiers) as? Int
+        let injRaw       = defaults.string(forKey: Key.injectionMode)   ?? InjectionStrategyKind.pasteboard.rawValue
+        let downloaded   = Set(defaults.stringArray(forKey: Key.downloadedModels) ?? [])
 
-        self.mode  = DictationMode(rawValue: modeRaw) ?? .normal
-        self.model = ModelVariant(rawValue: modelRaw) ?? .smallEN
+        self.mode             = DictationMode(rawValue: modeRaw) ?? .normal
+        self.downloadedModels = downloaded
+
+        // Guard: if stored model requires explicit download but hasn't been downloaded,
+        // fall back to small so the engine doesn't try to use a missing model.
+        let storedVariant = ModelVariant(rawValue: modelRaw) ?? .smallEN
+        if storedVariant.requiresExplicitDownload && !downloaded.contains(modelRaw) {
+            self.model = .smallEN
+        } else {
+            self.model = storedVariant
+        }
 
         if let kc, let mods {
             self.hotkey = HotkeyConfig(keyCode: UInt32(kc), modifiers: UInt32(mods))
@@ -61,6 +75,17 @@ public final class SettingsStore: ObservableObject {
         self.hotkeyMode          = .pushToTalk
         self.cloudCleanupEnabled = defaults.bool(forKey: Key.cloudCleanup)
         self.injectionStrategy   = InjectionStrategyKind(rawValue: injRaw) ?? .pasteboard
+    }
+
+    /// Marks a model as successfully downloaded so the UI shows it as selectable.
+    public func markDownloaded(_ variant: ModelVariant) {
+        downloadedModels.insert(variant.rawValue)
+    }
+
+    /// Returns true if the variant is ready to select (either auto-downloads or has been explicitly downloaded).
+    public func isReadyToUse(_ variant: ModelVariant) -> Bool {
+        if !variant.requiresExplicitDownload { return true }
+        return downloadedModels.contains(variant.rawValue)
     }
 }
 

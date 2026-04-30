@@ -20,6 +20,7 @@ public final class DictationCoordinator: ObservableObject {
 
     private var transcribeTask: Task<Void, Never>?
     private var targetPID: pid_t = 0
+    private var cancellables = Set<AnyCancellable>()
 
     public init(
         settings: SettingsStore,
@@ -45,6 +46,15 @@ public final class DictationCoordinator: ObservableObject {
                 self?.overlayState.pushLevel(rms)
             }
         }
+
+        // Keep WhisperEngine in sync when model is changed from SettingsView.
+        settings.$model
+            .dropFirst()
+            .sink { [weak self] variant in
+                guard let self else { return }
+                Task { await self.modelChanged(to: variant) }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Hotkey entry points
@@ -143,7 +153,7 @@ public final class DictationCoordinator: ObservableObject {
                 try await self.injector.inject(cleaned, targetPID: self.targetPID)
                 NSLog("KyroVoice: injection succeeded")
                 self.overlayState.phase = .injected
-                self.overlay.scheduleHide(after: 2.5)
+                self.overlay.scheduleHide(after: 0.1)
             } catch {
                 NSLog("KyroVoice: pipeline error — \(error.localizedDescription)")
                 self.showError(error.localizedDescription, durationSeconds: 3.5)
