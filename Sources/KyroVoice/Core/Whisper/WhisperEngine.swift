@@ -95,13 +95,23 @@ public actor WhisperEngine {
             throw WhisperEngineError.invalidAudio(reason: "silent buffer")
         }
 
+        // Pin language and strip special tokens so the model can't return raw
+        // token strings when it detects no speech. Keep all thresholds at their
+        // defaults — only disable the no-speech gate so very short utterances
+        // still produce output rather than empty string.
+        let opts = DecodingOptions(
+            language: "en",
+            skipSpecialTokens: true,
+            noSpeechThreshold: nil   // disable the gate; let Whisper return whatever it hears
+        )
+
         do {
             try Task.checkCancellation()
             let results: [TranscriptionResult]
             if let partialHandler {
                 results = try await kit.transcribe(
                     audioArray: samples,
-                    decodeOptions: nil
+                    decodeOptions: opts
                 ) { progress in
                     partialHandler(progress.text)
                     return !Task.isCancelled
@@ -109,7 +119,7 @@ public actor WhisperEngine {
             } else {
                 results = try await kit.transcribe(
                     audioArray: samples,
-                    decodeOptions: nil,
+                    decodeOptions: opts,
                     callback: nil
                 )
             }

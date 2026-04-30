@@ -45,10 +45,9 @@ public final class SettingsStore: ObservableObject {
     private init() {
         let modeRaw  = defaults.string(forKey: Key.mode)  ?? DictationMode.normal.rawValue
         let modelRaw = defaults.string(forKey: Key.model) ?? ModelVariant.smallEN.rawValue
-        let kc       = defaults.object(forKey: Key.hotkeyKeyCode)   as? Int
-        let mods     = defaults.object(forKey: Key.hotkeyModifiers) as? Int
-        let hkMode   = defaults.string(forKey: Key.hotkeyMode) ?? HotkeyMode.pushToTalk.rawValue
-        let injRaw   = defaults.string(forKey: Key.injectionMode) ?? InjectionStrategyKind.pasteboard.rawValue
+        let kc     = defaults.object(forKey: Key.hotkeyKeyCode)   as? Int
+        let mods   = defaults.object(forKey: Key.hotkeyModifiers) as? Int
+        let injRaw = defaults.string(forKey: Key.injectionMode) ?? InjectionStrategyKind.pasteboard.rawValue
 
         self.mode  = DictationMode(rawValue: modeRaw) ?? .normal
         self.model = ModelVariant(rawValue: modelRaw) ?? .smallEN

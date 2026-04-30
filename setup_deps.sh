@@ -22,9 +22,10 @@ security create-keychain -p "$KC_PASS" "$KC_PATH" 2>/dev/null || true
 security unlock-keychain -p "$KC_PASS" "$KC_PATH"
 security set-keychain-settings -lut 21600 "$KC_PATH" 2>/dev/null || true
 
-# Keep existing keychains in the search list
-EXISTING=$(security list-keychains -d user 2>/dev/null | tr -d '"' | tr '\n' ' ')
-security list-keychains -d user -s "$KC_PATH" $EXISTING 2>/dev/null || true
+# Add to the search list once, deduplicating any stale entries.
+EXISTING=$(security list-keychains -d user 2>/dev/null | tr -d '" ' | tr '\n' ' ')
+# Always rebuild the list with kyro-build first, followed by login keychain only.
+security list-keychains -d user -s "$KC_PATH" "$HOME/Library/Keychains/login.keychain-db" 2>/dev/null || true
 
 TMPDIR_CERT=$(mktemp -d)
 cleanup() { rm -rf "$TMPDIR_CERT"; }
@@ -66,8 +67,7 @@ openssl pkcs12 -export \
     -inkey "$KEY" \
     -in "$CERT" \
     -passout pass:"$KC_PASS" \
-    -name "$CERT_NAME" \
-    -legacy 2>/dev/null
+    -name "$CERT_NAME" 2>/dev/null
 
 security import "$P12" \
     -k "$KC_PATH" \

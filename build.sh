@@ -43,8 +43,10 @@ if [ -f "$BUILD_KC" ]; then
     security unlock-keychain -p "$KC_PASS" "$BUILD_KC" 2>/dev/null || true
 fi
 
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
-    codesign --force --deep --sign "$IDENTITY" \
+IDENTITY_HASH=$(security find-identity -v -p codesigning "$BUILD_KC" 2>/dev/null | grep "$IDENTITY" | head -1 | awk '{print $2}')
+if [ -f "$BUILD_KC" ] && [ -n "$IDENTITY_HASH" ]; then
+    codesign --force --deep --sign "$IDENTITY_HASH" \
+        --keychain "$BUILD_KC" \
         --entitlements "$ENTITLEMENTS" \
         "$APP_BUNDLE"
 else
