@@ -42,7 +42,7 @@ public final class DictationCoordinator: ObservableObject {
         self.overlay      = overlay
 
         recorder.levelHandler = { [weak self] rms in
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 self?.overlayState.pushLevel(rms)
             }
         }
@@ -153,7 +153,7 @@ public final class DictationCoordinator: ObservableObject {
                 try await self.injector.inject(cleaned, targetPID: self.targetPID)
                 NSLog("KyroVoice: injection succeeded")
                 self.overlayState.phase = .injected
-                self.overlay.scheduleHide(after: 0.1)
+                self.overlay.scheduleHide(after: 0.5)
             } catch {
                 NSLog("KyroVoice: pipeline error — \(error.localizedDescription)")
                 self.showError(error.localizedDescription, durationSeconds: 3.5)

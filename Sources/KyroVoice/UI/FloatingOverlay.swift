@@ -85,93 +85,153 @@ struct OverlayView: View {
     var body: some View {
         ZStack {
             if state.phase != .hidden {
-                HStack(spacing: 10) {
-                    iconView
-                    if case .error(let msg) = state.phase {
-                        Text(msg)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.orange)
-                            .lineLimit(2)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: 200, alignment: .leading)
-                    } else {
-                        WaveformBars(levels: state.levels, tint: tint)
-                            .frame(width: 45, height: 18)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-                        )
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                pillContent
+                    .background(pillBackground)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeInOut(duration: 0.18), value: state.phase)
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: state.phase)
     }
 
-    private var iconView: some View {
-        Group {
-            switch state.phase {
-            case .listening:
-                if #available(macOS 14.0, *) {
-                    Image(systemName: "mic.fill")
-                        .foregroundStyle(.red)
-                        .symbolEffect(.pulse, options: .repeating)
-                } else {
-                    Image(systemName: "mic.fill")
-                        .foregroundStyle(.red)
-                }
-            case .processing:
-                Image(systemName: "waveform")
-                    .foregroundStyle(.purple)
-            case .injected:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            case .error:
+    @ViewBuilder
+    private var pillContent: some View {
+        switch state.phase {
+        case .listening:
+            HStack(spacing: 10) {
+                micIcon
+                WaveformBars(audioLevel: state.audioLevel, tint: .red, showsActivityPulse: true)
+                    .frame(width: 51, height: 20)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+        case .processing:
+            ProgressView()
+                .progressViewStyle(.circular)
+                .scaleEffect(0.75)
+                .tint(.purple)
+                .frame(width: 20, height: 20)
+                .padding(12)
+
+        case .injected:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.system(size: 18, weight: .semibold))
+                .padding(12)
+
+        case .error(let msg):
+            HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-            case .hidden:
-                Image(systemName: "mic")
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                Text(msg)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+        case .hidden:
+            EmptyView()
+        }
+    }
+
+    private var micIcon: some View {
+        Group {
+            if #available(macOS 14.0, *) {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(.red)
+                    .symbolEffect(.pulse, options: .repeating)
+            } else {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(.red)
             }
         }
         .font(.system(size: 18, weight: .semibold))
         .frame(width: 22, height: 22)
     }
 
-    private var tint: Color {
-        switch state.phase {
-        case .listening:  return .red
-        case .processing: return .purple
-        case .injected:   return .green
-        case .error:      return .orange
-        case .hidden:     return .secondary
-        }
+    private var pillBackground: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+    }
+}
+
+struct WaveformBar: View {
+    let amplitude: CGFloat
+    let tint: Color
+    private let minHeight: CGFloat = 2
+    private let maxHeight: CGFloat = 20
+
+    var body: some View {
+        Capsule()
+            .fill(tint.opacity(0.85))
+            .frame(width: 3, height: minHeight + (maxHeight - minHeight) * amplitude)
     }
 }
 
 struct WaveformBars: View {
-    let levels: [Float]
+    let audioLevel: Float
     let tint: Color
+    var showsActivityPulse: Bool = false
+
+    private static let barCount = 9
+    private static let multipliers: [CGFloat] = [0.35, 0.55, 0.75, 0.9, 1.0, 0.9, 0.75, 0.55, 0.35]
+    private static let centerIndex = CGFloat((barCount - 1) / 2)
 
     var body: some View {
-        GeometryReader { geo in
-            HStack(alignment: .center, spacing: 3) {
-                ForEach(levels.indices, id: \.self) { i in
-                    Capsule()
-                        .fill(tint.opacity(0.85))
-                        .frame(width: 3, height: max(3, CGFloat(levels[i]) * geo.size.height * 1.5))
-                        .animation(.easeOut(duration: 0.08), value: levels[i])
+        Group {
+            if showsActivityPulse {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+                    bars(pulseTime: context.date.timeIntervalSinceReferenceDate)
                 }
+            } else {
+                bars(pulseTime: nil)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
+        .frame(height: 20)
+    }
+
+    private func bars(pulseTime: TimeInterval?) -> some View {
+        HStack(alignment: .center, spacing: 2.5) {
+            ForEach(0..<Self.barCount, id: \.self) { i in
+                WaveformBar(amplitude: amplitude(for: i, pulseTime: pulseTime), tint: tint)
+                    .animation(
+                        .spring(response: response(for: i), dampingFraction: 0.88)
+                        .delay(delay(for: i)),
+                        value: audioLevel
+                    )
+            }
+        }
+    }
+
+    private func amplitude(for index: Int, pulseTime: TimeInterval?) -> CGFloat {
+        let level = CGFloat(max(audioLevel, 0))
+        let base = min(level * Self.multipliers[index], 1.0)
+        guard let t = pulseTime else { return base }
+
+        let wave = CGFloat(0.5 + 0.5 * sin((t * 6.2) - Double(index) * 0.78))
+        let shimmer = CGFloat(0.5 + 0.5 * sin((t * 3.1) + Double(index) * 0.5))
+        let pulse = wave * 0.22 + shimmer * 0.06
+
+        return min(base * (0.74 + pulse) + (1.0 - base) * (0.04 + pulse * 0.28), 1.0)
+    }
+
+    private func response(for index: Int) -> Double {
+        let dist = abs(CGFloat(index) - Self.centerIndex) / Self.centerIndex
+        return 0.18 + Double(dist) * 0.06
+    }
+
+    private func delay(for index: Int) -> Double {
+        Double(abs(CGFloat(index) - Self.centerIndex)) * 0.01
     }
 }
