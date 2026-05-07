@@ -16,6 +16,7 @@ public final class FloatingOverlay {
 
     public func show() {
         ensurePanel()
+        repositionPanel()
         panel?.orderFrontRegardless()
         cancelHide()
     }
@@ -39,6 +40,18 @@ public final class FloatingOverlay {
         hideWorkItem = nil
     }
 
+    private func repositionPanel() {
+        guard let panel, let screen = NSScreen.main else { return }
+        let rect = panel.frame
+        let visible = screen.visibleFrame
+        let inset: CGFloat = 24
+        let origin = NSPoint(
+            x: visible.origin.x + (visible.width - rect.width) / 2,
+            y: visible.origin.y + inset
+        )
+        panel.setFrameOrigin(origin)
+    }
+
     private func ensurePanel() {
         guard panel == nil else { return }
         // Wide enough for error messages; transparent background makes
@@ -52,7 +65,8 @@ public final class FloatingOverlay {
         )
         p.isFloatingPanel = true
         p.level = .floating
-        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        // .fullScreenAuxiliary allows the panel to appear over fullscreen app spaces.
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         p.hasShadow = true
         p.isOpaque = false
         p.backgroundColor = .clear
@@ -62,16 +76,6 @@ public final class FloatingOverlay {
         let host = NSHostingView(rootView: OverlayView(state: state))
         host.frame = rect
         p.contentView = host
-
-        if let screen = NSScreen.main {
-            let visible = screen.visibleFrame
-            let inset: CGFloat = 24
-            let origin = NSPoint(
-                x: visible.origin.x + (visible.width - rect.width) / 2,
-                y: visible.origin.y + inset
-            )
-            p.setFrameOrigin(origin)
-        }
 
         panel = p
     }
