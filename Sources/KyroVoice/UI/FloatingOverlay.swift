@@ -56,7 +56,7 @@ public final class FloatingOverlay {
         guard panel == nil else { return }
         // Wide enough for error messages; transparent background makes
         // unused space invisible and ignoresMouseEvents keeps it click-through.
-        let rect = NSRect(x: 0, y: 0, width: 300, height: 44)
+        let rect = NSRect(x: 0, y: 0, width: 260, height: 36)
         let p = NSPanel(
             contentRect: rect,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -102,43 +102,43 @@ struct OverlayView: View {
     private var pillContent: some View {
         switch state.phase {
         case .listening:
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 micIcon
                 WaveformBars(audioLevel: state.audioLevel, tint: .red, showsActivityPulse: true)
-                    .frame(width: 51, height: 20)
+                    .frame(width: 40, height: 16)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
 
         case .processing:
             ProgressView()
                 .progressViewStyle(.circular)
-                .scaleEffect(0.75)
+                .scaleEffect(0.65)
                 .tint(.purple)
-                .frame(width: 20, height: 20)
-                .padding(12)
+                .frame(width: 16, height: 16)
+                .padding(10)
 
         case .injected:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
-                .font(.system(size: 18, weight: .semibold))
-                .padding(12)
+                .font(.system(size: 14, weight: .semibold))
+                .padding(10)
 
         case .error(let msg):
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 22, height: 22)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 18, height: 18)
                 Text(msg)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.orange)
                     .lineLimit(2)
                     .truncationMode(.tail)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
 
         case .hidden:
             EmptyView()
@@ -156,15 +156,15 @@ struct OverlayView: View {
                     .foregroundStyle(.red)
             }
         }
-        .font(.system(size: 18, weight: .semibold))
-        .frame(width: 22, height: 22)
+        .font(.system(size: 14, weight: .semibold))
+        .frame(width: 18, height: 18)
     }
 
     private var pillBackground: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
+        RoundedRectangle(cornerRadius: 11, style: .continuous)
             .fill(.ultraThinMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
             )
     }
@@ -174,12 +174,12 @@ struct WaveformBar: View {
     let amplitude: CGFloat
     let tint: Color
     private let minHeight: CGFloat = 2
-    private let maxHeight: CGFloat = 20
+    private let maxHeight: CGFloat = 16
 
     var body: some View {
         Capsule()
             .fill(tint.opacity(0.85))
-            .frame(width: 3, height: minHeight + (maxHeight - minHeight) * amplitude)
+            .frame(width: 2.5, height: minHeight + (maxHeight - minHeight) * amplitude)
     }
 }
 
@@ -202,11 +202,11 @@ struct WaveformBars: View {
                 bars(pulseTime: nil)
             }
         }
-        .frame(height: 20)
+        .frame(height: 16)
     }
 
     private func bars(pulseTime: TimeInterval?) -> some View {
-        HStack(alignment: .center, spacing: 2.5) {
+        HStack(alignment: .center, spacing: 2) {
             ForEach(0..<Self.barCount, id: \.self) { i in
                 WaveformBar(amplitude: amplitude(for: i, pulseTime: pulseTime), tint: tint)
                     .animation(
