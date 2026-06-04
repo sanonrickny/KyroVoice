@@ -127,8 +127,7 @@ public final class DictationCoordinator: ObservableObject {
 
         // Resolve at stop so the user's current frontmost app wins.
         let resolvedMode = modeResolver.resolve(default: settings.mode)
-        let cloud = settings.cloudCleanupEnabled
-        NSLog("KyroVoice: transcribing — mode=\(resolvedMode) cloud=\(cloud)")
+        NSLog("KyroVoice: transcribing — mode=\(resolvedMode)")
 
         transcribeTask?.cancel()
         transcribeTask = Task { [weak self] in
@@ -136,12 +135,7 @@ public final class DictationCoordinator: ObservableObject {
             do {
                 let raw = try await self.whisper.transcribe(samples: samples)
                 NSLog("KyroVoice: raw='\(raw)'")
-                let cleaned: String
-                if cloud {
-                    cleaned = try await self.processor.processAsync(raw, mode: resolvedMode, useCloud: true)
-                } else {
-                    cleaned = self.processor.process(raw, mode: resolvedMode)
-                }
+                let cleaned = self.processor.process(raw, mode: resolvedMode)
                 NSLog("KyroVoice: cleaned='\(cleaned)'")
                 guard !Task.isCancelled else { return }
                 guard !cleaned.isEmpty else {
@@ -152,6 +146,14 @@ public final class DictationCoordinator: ObservableObject {
                 NSLog("KyroVoice: injecting via \(self.settings.injectionStrategy.rawValue) targetPID=\(self.targetPID)")
                 try await self.injector.inject(cleaned, targetPID: self.targetPID)
                 NSLog("KyroVoice: injection succeeded")
+                let appName = NSRunningApplication(processIdentifier: self.targetPID)?.localizedName
+                HistoryStore.shared.add(HistoryEntry(
+                    id: UUID(),
+                    timestamp: Date(),
+                    text: cleaned,
+                    mode: resolvedMode,
+                    targetAppName: appName
+                ))
                 self.overlayState.phase = .injected
                 self.overlay.scheduleHide(after: 0.5)
             } catch {

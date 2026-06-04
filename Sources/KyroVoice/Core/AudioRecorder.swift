@@ -103,19 +103,27 @@ public final class AudioRecorder {
     }
 
     @objc private func handleConfigChange() {
-        let wasRecording = capturing
-        removeTapIfNeeded()
-        engine.stop()
-        _ = engine.inputNode
-        do {
-            try KVAudioEngineHelper.start(engine)
-            if wasRecording {
-                try installTapIfNeeded()
-            } else {
-                engine.stop()
+        // AVAudioEngineConfigurationChange may arrive on a non-main thread.
+        // All engine/tap state is owned by the main thread, so dispatch there
+        // to avoid data races with start() and stop().
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let wasRecording = self.capturing
+            self.lock.unlock()
+            self.removeTapIfNeeded()
+            self.engine.stop()
+            _ = self.engine.inputNode
+            do {
+                try KVAudioEngineHelper.start(self.engine)
+                if wasRecording {
+                    try self.installTapIfNeeded()
+                } else {
+                    self.engine.stop()
+                }
+            } catch {
+                NSLog("KyroVoice: audio reconfigure failed: \(error)")
             }
-        } catch {
-            NSLog("KyroVoice: audio reconfigure failed: \(error)")
         }
     }
 

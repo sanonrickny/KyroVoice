@@ -15,7 +15,6 @@ public final class SettingsStore: ObservableObject {
         static let hotkeyKeyCode    = "kv.hotkey.keyCode"
         static let hotkeyModifiers  = "kv.hotkey.modifiers"
         static let hotkeyMode       = "kv.hotkey.mode"
-        static let cloudCleanup     = "kv.cloudCleanup"
         static let injectionMode    = "kv.injection.mode"
         static let perAppOverrides  = "kv.perAppOverrides"
         static let downloadedModels = "kv.downloadedModels"
@@ -35,9 +34,6 @@ public final class SettingsStore: ObservableObject {
     }
     @Published public var hotkeyMode: HotkeyMode {
         didSet { defaults.set(hotkeyMode.rawValue, forKey: Key.hotkeyMode) }
-    }
-    @Published public var cloudCleanupEnabled: Bool {
-        didSet { defaults.set(cloudCleanupEnabled, forKey: Key.cloudCleanup) }
     }
     @Published public var injectionStrategy: InjectionStrategyKind {
         didSet { defaults.set(injectionStrategy.rawValue, forKey: Key.injectionMode) }
@@ -72,9 +68,8 @@ public final class SettingsStore: ObservableObject {
             self.hotkey = .default
         }
 
-        self.hotkeyMode          = .pushToTalk
-        self.cloudCleanupEnabled = defaults.bool(forKey: Key.cloudCleanup)
-        self.injectionStrategy   = InjectionStrategyKind(rawValue: injRaw) ?? .pasteboard
+        self.hotkeyMode        = .pushToTalk
+        self.injectionStrategy = InjectionStrategyKind(rawValue: injRaw) ?? .pasteboard
     }
 
     /// Marks a model as successfully downloaded so the UI shows it as selectable.

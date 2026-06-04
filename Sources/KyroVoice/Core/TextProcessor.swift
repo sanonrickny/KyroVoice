@@ -6,18 +6,11 @@ public protocol TextRule {
     func apply(_ s: String) -> String
 }
 
-public protocol CleanupBackend {
-    func clean(_ s: String, mode: DictationMode) async throws -> String
-}
-
 /// Deterministic, offline-first text cleanup. Mode-gated rule pipeline.
 public final class TextProcessor {
     private let pipelines: [DictationMode: [TextRule]]
-    private let backend: CleanupBackend?
 
-    public init(backend: CleanupBackend? = nil) {
-        self.backend = backend
-
+    public init() {
         let prelude: [TextRule] = [
             UnicodeNormalizer(),
             WhitespaceNormalizer()
@@ -52,12 +45,6 @@ public final class TextProcessor {
         var s = raw
         for rule in rules { s = rule.apply(s) }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    public func processAsync(_ raw: String, mode: DictationMode, useCloud: Bool) async throws -> String {
-        let local = process(raw, mode: mode)
-        guard useCloud, let backend else { return local }
-        return try await backend.clean(local, mode: mode)
     }
 }
 

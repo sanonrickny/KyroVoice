@@ -15,7 +15,6 @@ public final class MenuBarController {
     private weak var startStopItem: NSMenuItem?
     private var modeItems: [DictationMode: NSMenuItem] = [:]
     private var modelItems: [ModelVariant: NSMenuItem] = [:]
-    private weak var cloudItem: NSMenuItem?
 
     public init(coordinator: DictationCoordinator, settings: SettingsStore) {
         self.coordinator = coordinator
@@ -46,9 +45,6 @@ public final class MenuBarController {
             self?.refreshModelChecks(for: new)
         }.store(in: &cancellables)
 
-        settings.$cloudCleanupEnabled.sink { [weak self] enabled in
-            self?.cloudItem?.state = enabled ? .on : .off
-        }.store(in: &cancellables)
     }
 
     private func observeCoordinator() {
@@ -125,16 +121,14 @@ public final class MenuBarController {
 
         menu.addItem(.separator())
 
-        // Cloud cleanup toggle
-        let cloud = NSMenuItem(
-            title: "Cloud AI cleanup",
-            action: #selector(toggleCloud),
+        // History
+        let historyItem = NSMenuItem(
+            title: "History…",
+            action: #selector(openHistory),
             keyEquivalent: ""
         )
-        cloud.target = self
-        cloud.state = settings.cloudCleanupEnabled ? .on : .off
-        menu.addItem(cloud)
-        cloudItem = cloud
+        historyItem.target = self
+        menu.addItem(historyItem)
 
         // Settings
         let settingsItem = NSMenuItem(
@@ -178,8 +172,8 @@ public final class MenuBarController {
         Task { await coordinator.modelChanged(to: variant) }
     }
 
-    @objc private func toggleCloud() {
-        settings.cloudCleanupEnabled.toggle()
+    @objc private func openHistory() {
+        HistoryWindow.shared.show()
     }
 
     @objc private func openSettings() {

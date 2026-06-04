@@ -185,11 +185,6 @@ struct SettingsView: View {
                     }
                 }
 
-                card {
-                    toggleRow(label: "Cloud AI cleanup",
-                              hint: "Polishes transcriptions via AI — requires internet",
-                              isOn: $settings.cloudCleanupEnabled)
-                }
             }
             .padding(24)
         }
