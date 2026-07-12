@@ -7,6 +7,7 @@ public enum AudioRecorderError: Error, LocalizedError {
     case microphoneDenied
     case engineStartFailed(underlying: Error)
     case formatUnavailable
+    case noInputDevice
     case notReady
 
     public var errorDescription: String? {
@@ -17,6 +18,8 @@ public enum AudioRecorderError: Error, LocalizedError {
             return "Audio engine failed to start: \(e.localizedDescription)"
         case .formatUnavailable:
             return "Could not prepare 16 kHz mono Float32 audio format."
+        case .noInputDevice:
+            return "No audio input device available. Check your microphone connection and try again."
         case .notReady:
             return "Audio engine is still initialising. Please try again in a moment."
         }
@@ -185,6 +188,11 @@ public final class AudioRecorder {
 
         let input = engine.inputNode
         let nativeFmt = input.inputFormat(forBus: 0)
+        // A 0 Hz / 0-channel format means the input device vanished (sleep/wake,
+        // Bluetooth disconnect). installTap would raise an NSException on it.
+        guard nativeFmt.sampleRate > 0, nativeFmt.channelCount > 0 else {
+            throw AudioRecorderError.noInputDevice
+        }
         // Build a converter now (before the tap block runs) so it's reused
         // across every buffer callback rather than allocated per-buffer.
         guard let converter = AVAudioConverter(from: nativeFmt, to: targetFmt) else {
@@ -194,8 +202,12 @@ public final class AudioRecorder {
         input.removeTap(onBus: 0)
         // Install with nil (native format): macOS 26 throws an NSException when
         // a non-native sample rate is passed. We convert to 16 kHz Float32 manually.
-        input.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buf, _ in
-            self?.convertAndHandle(buf, converter: converter, targetFmt: targetFmt)
+        // Wrapped in the ObjC shim because installTap raises NSExceptions (seen in
+        // crash logs after multi-day uptime) that Swift cannot catch.
+        try KVAudioEngineHelper.catchException {
+            input.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buf, _ in
+                self?.convertAndHandle(buf, converter: converter, targetFmt: targetFmt)
+            }
         }
         tapInstalled = true
     }
@@ -237,7 +249,11 @@ public final class AudioRecorder {
         guard count > 0 else { return }
 
         lock.lock()
-        samples.append(contentsOf: UnsafeBufferPointer(start: channelPtr, count: count))
+        // Cap the buffer so a forgotten toggle-mode recording can't grow
+        // memory without bound (10 min ≈ 38 MB at 16 kHz Float32).
+        if samples.count < Int(Self.targetSampleRate) * 600 {
+            samples.append(contentsOf: UnsafeBufferPointer(start: channelPtr, count: count))
+        }
         lock.unlock()
     }
 

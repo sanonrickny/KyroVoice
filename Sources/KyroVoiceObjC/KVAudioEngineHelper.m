@@ -26,4 +26,23 @@
     }
 }
 
++ (BOOL)catchException:(void (NS_NOESCAPE ^)(void))block
+                 error:(NSError **)outError {
+    @try {
+        block();
+        return YES;
+    } @catch (NSException *ex) {
+        if (outError) {
+            *outError = [NSError errorWithDomain:@"com.kyro.KyroVoice"
+                                           code:-2
+                                       userInfo:@{
+                NSLocalizedDescriptionKey: [NSString stringWithFormat:
+                    @"Audio engine error (%@): %@",
+                    ex.name, ex.reason ?: @"no reason"]
+            }];
+        }
+        return NO;
+    }
+}
+
 @end
