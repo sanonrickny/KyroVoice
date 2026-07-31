@@ -27,13 +27,27 @@ public final class MenuBarController {
         observeCoordinator()
     }
 
+    /// Menu-bar metrics: 15 pt medium reads level with the system's own items.
+    private static let symbolConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+
     private func configureButton() {
-        if let button = statusItem.button {
-            button.title = "KV"
-            button.image = NSImage(systemSymbolName: "mic.circle", accessibilityDescription: "KyroVoice")
-            button.image?.isTemplate = true
-            button.toolTip = "KyroVoice — local voice dictation"
-        }
+        guard let button = statusItem.button else { return }
+        button.toolTip = "KyroVoice - local voice dictation"
+        applyIcon(recording: false)
+    }
+
+    /// One glyph, two states: a waveform that goes red while capturing. Same
+    /// silhouette in both states, so neighbouring menu-bar items never shift.
+    private func applyIcon(recording: Bool) {
+        guard let button = statusItem.button else { return }
+        let image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "KyroVoice")?
+            .withSymbolConfiguration(Self.symbolConfig)
+        image?.isTemplate = true
+        button.image = image
+        // If the symbol were ever unavailable the button would render empty and
+        // look like the app had vanished; a text fallback keeps it findable.
+        button.title = image == nil ? "KV" : ""
+        button.contentTintColor = recording ? .systemRed : nil
     }
 
     private func observeSettings() {
@@ -56,13 +70,7 @@ public final class MenuBarController {
             // actor, so no hop is needed at all.
             .sink { [weak self] recording in
                 guard let self else { return }
-                if let button = self.statusItem.button {
-                    let symbol = recording ? "mic.circle.fill" : "mic.circle"
-                    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "KyroVoice")
-                    button.image?.isTemplate = true
-                    button.contentTintColor = recording ? .systemRed : nil
-                }
-                
+                self.applyIcon(recording: recording)
                 self.refreshStartStopTitle(recording: recording)
             }
             .store(in: &cancellables)
@@ -192,8 +200,10 @@ public final class MenuBarController {
     @objc private func selectModel(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let variant = ModelVariant(rawValue: raw) else { return }
+        // Assigning settings.model is enough: DictationCoordinator subscribes to
+        // settings.$model and reloads the engine itself. Calling modelChanged
+        // here too reloaded the model twice on every menu pick.
         settings.model = variant
-        Task { await coordinator.modelChanged(to: variant) }
     }
 
     @objc private func openHistory() {
