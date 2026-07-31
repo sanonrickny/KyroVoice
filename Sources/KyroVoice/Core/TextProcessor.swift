@@ -75,37 +75,33 @@ struct WhitespaceNormalizer: TextRule {
 
 // MARK: - Rules: normal
 
-/// Strips fillers when they appear as standalone words. Conservative:
-/// "literally" / "basically" / "like" only stripped when adjacent to a verb-ish
-/// or adjective-ish neighbor; otherwise preserved (e.g. "this looks like that").
+/// Strips disfluencies that are never real words.
+///
+/// Deliberately limited to pure vocalisations. Phrases like "actually",
+/// "kind of", "you know" and "i mean" were stripped unconditionally here, which
+/// corrupted ordinary sentences: "I actually finished it" -> "I finished it",
+/// "what kind of car is that" -> "what car is that", "do you know where" ->
+/// "do where". Telling filler from content in those cases needs real parsing,
+/// so until that exists they are left alone.
 struct FillerStripper: TextRule {
     private static let alwaysFiller: Set<String> = [
-        "uh", "um", "uhh", "umm", "uhm", "er", "erm", "ah",
-        "you know", "i mean", "kind of", "sort of"
-    ]
-    private static let conditionalFiller: Set<String> = [
-        "like", "literally", "basically", "actually", "honestly"
+        "uh", "um", "uhh", "umm", "uhm", "er", "erm", "ah"
     ]
 
     func apply(_ s: String) -> String {
         var working = s
-
-        // Lowercase pass for matching, but preserve original casing where kept.
         for phrase in Self.alwaysFiller {
             working = stripPhrase(phrase, in: working)
         }
-        for phrase in Self.conditionalFiller {
-            working = stripPhrase(phrase, in: working)
-        }
-
         // Collapse double-spaces created by stripping.
         return WhitespaceNormalizer().apply(working)
     }
 
     private func stripPhrase(_ phrase: String, in input: String) -> String {
-        // Word-boundary, case-insensitive match. Allow optional trailing comma.
+        // Word-boundary, case-insensitive match. Consumes a trailing comma too,
+        // otherwise "Ah, the sunset" left an orphan ", the sunset".
         let escaped = NSRegularExpression.escapedPattern(for: phrase)
-        let pattern = "(?i)(^|\\s|,)(\(escaped))(?=[\\s,.!?;]|$)"
+        let pattern = "(?i)(^|\\s|,)(\(escaped)),?(?=[\\s.!?;]|$)"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return input }
         let range = NSRange(input.startIndex..<input.endIndex, in: input)
         return regex.stringByReplacingMatches(
@@ -125,8 +121,15 @@ struct PunctuationSpacer: TextRule {
                 withTemplate: "$1"
             )
         }
-        // Ensure single space after punctuation when followed by a letter.
-        if let r = try? NSRegularExpression(pattern: "([\\.,;:!?])([^\\s\\.,;:!?\\)\\]\\}\"'])") {
+        // Ensure a single space after , ; : ! ? when glued to the next word.
+        //
+        // Periods are deliberately excluded and digits are guarded on both
+        // sides. "3.5", "9:30", "e.g.", "foo@bar.com" and "file.txt" all occur
+        // far more often in dictation than a genuinely missing space after a
+        // sentence period, and there is no reliable way to tell them apart.
+        // The old unguarded rule turned "version 3.5 at 9:30" into
+        // "version 3. 5 at 9: 30".
+        if let r = try? NSRegularExpression(pattern: "(?<!\\d)([,;:!?])(?!\\d)([^\\s\\.,;:!?\\)\\]\\}\"'])") {
             out = r.stringByReplacingMatches(
                 in: out,
                 range: NSRange(out.startIndex..<out.endIndex, in: out),
@@ -139,21 +142,42 @@ struct PunctuationSpacer: TextRule {
 
 struct SentenceCapitalizer: TextRule {
     func apply(_ s: String) -> String {
-        var chars = Array(s)
+        var built = ""
+        built.reserveCapacity(s.count)
         var capitalizeNext = true
-        for i in 0..<chars.count {
-            let c = chars[i]
+        // A sentence only ends when the terminator is followed by whitespace.
+        // Capitalizing straight after any "." turned "foo@bar.com" into
+        // "foo@bar.Com" and "file.txt" into "file.Txt".
+        var sawTerminator = false
+        for c in s {
             if capitalizeNext, c.isLetter {
-                chars[i] = Character(String(c).uppercased())
+                // Append the uppercased *String*, never Character(String).
+                // Uppercasing can expand one grapheme into several ("ß" -> "SS",
+                // "ﬁ" -> "FI", "ŉ" -> "ʼN"), and Character(String) traps the
+                // process on a multi-grapheme string. Whisper emits these.
+                built += String(c).uppercased()
                 capitalizeNext = false
-            } else if c == "." || c == "!" || c == "?" || c == "\n" {
-                capitalizeNext = true
-            } else if !c.isWhitespace {
-                capitalizeNext = false
+                sawTerminator = false
+            } else {
+                built.append(c)
+                if c == "\n" {
+                    capitalizeNext = true
+                    sawTerminator = false
+                } else if c == "." || c == "!" || c == "?" {
+                    sawTerminator = true
+                } else if c.isWhitespace {
+                    if sawTerminator {
+                        capitalizeNext = true
+                        sawTerminator = false
+                    }
+                } else {
+                    capitalizeNext = false
+                    sawTerminator = false
+                }
             }
         }
         // "i" → "I" as a word.
-        var out = String(chars)
+        var out = built
         if let r = try? NSRegularExpression(pattern: "\\bi\\b") {
             out = r.stringByReplacingMatches(
                 in: out,
@@ -201,7 +225,9 @@ struct SmallNumberSpeller: TextRule {
         "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine", "10": "ten"
     ]
     func apply(_ s: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: "\\b(\\d{1,2})\\b") else { return s }
+        // Not inside a decimal, time or version string: "room 3.5" must not
+        // become "room three.five", "9:30" must not become "nine:30".
+        guard let regex = try? NSRegularExpression(pattern: "(?<![\\d.:])\\b(\\d{1,2})\\b(?![\\d.:])") else { return s }
         let ns = s as NSString
         var result = ""
         var cursor = 0
@@ -262,13 +288,21 @@ struct SpokenSyntaxRule: TextRule {
 
     func apply(_ s: String) -> String {
         var working = s
-        for (phrase, symbol) in Self.map {
+        // Sort longest-first rather than trusting the literal order of the map.
+        // The map claimed "longer phrases first" but violated it: "equals"
+        // preceded "plus equals" and "pipe" preceded "double pipe", so
+        // "x plus equals one" became "x plus = one" and "a double pipe b"
+        // became "a double | b". Sorting here can't drift out of sync.
+        for (phrase, symbol) in Self.map.sorted(by: { $0.0.count > $1.0.count }) {
             let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: phrase))\\b"
             guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
             let range = NSRange(working.startIndex..<working.endIndex, in: working)
             // Insert the literal symbol; spacing fixed by CodeSymbolSpacing.
+            // The symbol must be escaped as a *template*: "$" and "\" are
+            // template metacharacters, so "back slash" used to vanish entirely.
             working = regex.stringByReplacingMatches(
-                in: working, range: range, withTemplate: symbol
+                in: working, range: range,
+                withTemplate: NSRegularExpression.escapedTemplate(for: symbol)
             )
         }
         return working

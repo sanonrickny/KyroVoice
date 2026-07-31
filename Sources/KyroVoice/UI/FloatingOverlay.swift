@@ -41,7 +41,14 @@ public final class FloatingOverlay {
     }
 
     private func repositionPanel() {
-        guard let panel, let screen = NSScreen.main else { return }
+        // NSScreen.main is the screen with the *key window*. An .accessory app
+        // whose only window is a nonactivating panel never has one, so this
+        // always resolved to the menu-bar display and the HUD appeared on the
+        // wrong monitor. The screen under the cursor is where the user is.
+        let cursorScreen = NSScreen.screens.first {
+            NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
+        }
+        guard let panel, let screen = cursorScreen ?? NSScreen.main else { return }
         let rect = panel.frame
         let visible = screen.visibleFrame
         let inset: CGFloat = 24
@@ -75,6 +82,7 @@ public final class FloatingOverlay {
 
         let host = NSHostingView(rootView: OverlayView(state: state))
         host.frame = rect
+        host.autoresizingMask = [.width, .height]
         p.contentView = host
 
         panel = p
@@ -135,7 +143,12 @@ struct OverlayView: View {
                     .foregroundStyle(.orange)
                     .lineLimit(2)
                     .truncationMode(.tail)
-                    .fixedSize(horizontal: true, vertical: false)
+                    // Wrap inside the panel. `horizontal: true` forced the text
+                    // to its full single-line width, so a 97-character error
+                    // like the mic-denied message rendered ~500 pt wide in a
+                    // 260 pt panel and the user saw a centred fragment.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200, alignment: .leading)
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 8)

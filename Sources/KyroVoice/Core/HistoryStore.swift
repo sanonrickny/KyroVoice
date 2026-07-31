@@ -44,12 +44,24 @@ public final class HistoryStore: ObservableObject {
         prune()
     }
 
+    /// Re-applies the 24 h TTL. Call before showing history: pruning only on
+    /// `add` meant that after a quiet day the window still listed stale entries.
+    public func pruneNow() {
+        prune()
+    }
+
     private func save() {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = .prettyPrinted
         guard let data = try? encoder.encode(entries) else { return }
-        try? data.write(to: storageURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storageURL.path)
+        // Off the main actor: this ran synchronously right after injection,
+        // hitching the UI exactly as the "injected" checkmark animated.
+        let url = storageURL
+        Task.detached(priority: .utility) {
+            try? data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: url.path
+            )
+        }
     }
 }

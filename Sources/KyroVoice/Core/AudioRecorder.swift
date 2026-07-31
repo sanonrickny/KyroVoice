@@ -29,35 +29,69 @@ public enum AudioRecorderError: Error, LocalizedError {
 /// Captures default-input audio and produces 16 kHz mono Float32 PCM
 /// suitable for WhisperKit.
 ///
-/// AVAudioEngine performs the sample-rate and channel-count conversion
-/// automatically when you specify the target format directly in `installTap`.
-/// No separate AVAudioConverter is needed — the engine's built-in converter
-/// is more reliable across engine stop/start cycles than a manually held
-/// AVAudioConverter instance.
+/// A fresh `AVAudioEngine` is built for every recording and torn down at the
+/// end of it. That is deliberate. A long-lived engine caches a hidden
+/// aggregate audio device and a stale output-bus format that macOS provides no
+/// supported way to refresh; once sleep/wake, a Bluetooth switch or a
+/// `coreaudiod` restart invalidates them, `installTapOnBus:` raises an
+/// NSException on every subsequent attempt and the process aborts. That is
+/// exactly the multi-day-uptime crash this app was dying from. Engine
+/// construction costs ~10-50 ms, hidden under hotkey-down latency.
+@MainActor
 public final class AudioRecorder {
     public typealias LevelHandler = @Sendable (Float) -> Void
 
     public enum State { case idle, preparing, ready, recording, denied }
 
     public private(set) var state: State = .idle
-    public var levelHandler: LevelHandler?
 
-    public static let targetSampleRate: Double = 16_000
+    public nonisolated static let targetSampleRate: Double = 16_000
 
-    private let engine = AVAudioEngine()
+    /// ~200 ms at 48 kHz. The documented supported range for a tap is
+    /// [100, 400] ms; the old 4096 (85 ms) was below the floor and silently
+    /// clamped by AVAudioEngine anyway.
+    private static let tapBufferSize: AVAudioFrameCount = 9600
+
+    private var engine: AVAudioEngine?
     private var targetFormat: AVAudioFormat?
 
-    private let lock = NSLock()
-    private var capturing = false
-    private var samples: [Float] = []
-
-    private var tapInstalled = false
-    private var configObserverRegistered = false
+    /// Guards the fields below, which the audio render thread touches.
+    /// They are `nonisolated(unsafe)` because `lock` provides the exclusion the
+    /// main actor otherwise would.
+    private nonisolated let lock = NSLock()
+    private nonisolated(unsafe) var capturing = false
+    private nonisolated(unsafe) var samples: [Float] = []
+    private nonisolated(unsafe) var levelHandler: LevelHandler?
+    private nonisolated(unsafe) var converter: AVAudioConverter?
 
     public init() {}
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    /// Settable from any thread; the tap callback reads it under `lock`.
+    public nonisolated func setLevelHandler(_ handler: LevelHandler?) {
+        lock.lock(); defer { lock.unlock() }
+        levelHandler = handler
+    }
+
+    /// Sync accessors so async contexts never take `lock` directly.
+    private nonisolated func isCapturing() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return capturing
+    }
+
+    private nonisolated func resetConverter() {
+        lock.lock(); defer { lock.unlock() }
+        converter = nil
+    }
+
     // MARK: - Lifecycle
 
+    /// Requests microphone access and builds the target format. Deliberately
+    /// does NOT create an engine: anything built here would be stale by the
+    /// time the user actually dictates.
     public func prepare() async throws {
         state = .preparing
 
@@ -77,57 +111,7 @@ public final class AudioRecorder {
             throw AudioRecorderError.formatUnavailable
         }
         targetFormat = target
-
-        registerConfigObserverIfNeeded()
-
-        // Touch inputNode to force it into the engine graph before start.
-        // On macOS 26+, starting the engine throws if no nodes are connected.
-        _ = engine.inputNode
-        do {
-            try KVAudioEngineHelper.start(engine)
-            engine.stop()
-        } catch {
-            state = .idle
-            throw AudioRecorderError.engineStartFailed(underlying: error)
-        }
-
         state = .ready
-    }
-
-    private func registerConfigObserverIfNeeded() {
-        guard !configObserverRegistered else { return }
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleConfigChange),
-            name: .AVAudioEngineConfigurationChange,
-            object: engine
-        )
-        configObserverRegistered = true
-    }
-
-    @objc private func handleConfigChange() {
-        // AVAudioEngineConfigurationChange may arrive on a non-main thread.
-        // All engine/tap state is owned by the main thread, so dispatch there
-        // to avoid data races with start() and stop().
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.lock.lock()
-            let wasRecording = self.capturing
-            self.lock.unlock()
-            self.removeTapIfNeeded()
-            self.engine.stop()
-            _ = self.engine.inputNode
-            do {
-                try KVAudioEngineHelper.start(self.engine)
-                if wasRecording {
-                    try self.installTapIfNeeded()
-                } else {
-                    self.engine.stop()
-                }
-            } catch {
-                NSLog("KyroVoice: audio reconfigure failed: \(error)")
-            }
-        }
     }
 
     // MARK: - Capture control
@@ -140,28 +124,78 @@ public final class AudioRecorder {
         case .recording: return
         }
 
+        // No target format means prepare() has not succeeded yet; saying
+        // "still initialising" is truer than "format unavailable".
+        guard let targetFmt = targetFormat else { throw AudioRecorderError.notReady }
+
         lock.lock()
         samples.removeAll(keepingCapacity: true)
         samples.reserveCapacity(Int(Self.targetSampleRate) * 60)
+        converter = nil
         capturing = true
         lock.unlock()
 
         do {
-            try KVAudioEngineHelper.start(engine)
+            try beginCapture(targetFmt: targetFmt)
         } catch {
             lock.lock(); capturing = false; lock.unlock()
-            throw AudioRecorderError.engineStartFailed(underlying: error)
-        }
-
-        do {
-            try installTapIfNeeded()
-        } catch {
-            lock.lock(); capturing = false; lock.unlock()
-            engine.stop()
+            teardownEngine()
             throw error
         }
 
         state = .recording
+    }
+
+    private func beginCapture(targetFmt: AVAudioFormat) throws {
+        let engine = AVAudioEngine()
+        self.engine = engine
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConfigChange),
+            name: .AVAudioEngineConfigurationChange,
+            object: engine
+        )
+
+        let input = engine.inputNode
+
+        // `format: nil` makes installTap use the node's *output* format, so
+        // that is the format the tap will actually deliver and the one that
+        // must be valid. Validating inputFormat instead (what this code used to
+        // do) checks a value the tap never consults, which is why the guard
+        // never prevented the crash.
+        let outFmt = input.outputFormat(forBus: 0)
+        let inFmt = input.inputFormat(forBus: 0)
+        guard outFmt.sampleRate > 0, outFmt.channelCount > 0,
+              inFmt.sampleRate > 0, inFmt.channelCount > 0,
+              outFmt.sampleRate == inFmt.sampleRate else {
+            NSLog("KyroVoice: rejecting tap — in=\(inFmt.sampleRate)Hz/\(inFmt.channelCount)ch out=\(outFmt.sampleRate)Hz/\(outFmt.channelCount)ch")
+            throw AudioRecorderError.noInputDevice
+        }
+
+        do {
+            try KVAudioEngineHelper.start(engine)
+        } catch {
+            throw AudioRecorderError.engineStartFailed(underlying: error)
+        }
+
+        do {
+            // The installTapOnBus: call itself lives in Objective-C: an
+            // NSException must never unwind through a Swift frame.
+            try KVAudioEngineHelper.installTap(
+                on: input,
+                bus: 0,
+                bufferSize: Self.tapBufferSize,
+                format: nil
+            ) { [weak self] buf, _ in
+                self?.convertAndHandle(buf, targetFmt: targetFmt)
+            }
+        } catch {
+            // The reason string is the entire diagnosis if this ever recurs.
+            NSLog("KyroVoice: \(error.localizedDescription) — in=\(inFmt.sampleRate)Hz/\(inFmt.channelCount)ch out=\(outFmt.sampleRate)Hz/\(outFmt.channelCount)ch")
+            engine.stop()
+            throw error
+        }
     }
 
     public func stop() -> [Float] {
@@ -169,57 +203,78 @@ public final class AudioRecorder {
         capturing = false
         let captured = samples
         samples.removeAll(keepingCapacity: true)
+        converter = nil
         lock.unlock()
 
-        removeTapIfNeeded()
-        engine.stop()
+        teardownEngine()
 
         if state == .recording { state = .ready }
         return captured
     }
 
-    // MARK: - Tap
-
-    private func installTapIfNeeded() throws {
-        guard !tapInstalled else { return }
-        guard let targetFmt = targetFormat else {
-            throw AudioRecorderError.formatUnavailable
-        }
-
-        let input = engine.inputNode
-        let nativeFmt = input.inputFormat(forBus: 0)
-        // A 0 Hz / 0-channel format means the input device vanished (sleep/wake,
-        // Bluetooth disconnect). installTap would raise an NSException on it.
-        guard nativeFmt.sampleRate > 0, nativeFmt.channelCount > 0 else {
-            throw AudioRecorderError.noInputDevice
-        }
-        // Build a converter now (before the tap block runs) so it's reused
-        // across every buffer callback rather than allocated per-buffer.
-        guard let converter = AVAudioConverter(from: nativeFmt, to: targetFmt) else {
-            throw AudioRecorderError.formatUnavailable
-        }
-
-        input.removeTap(onBus: 0)
-        // Install with nil (native format): macOS 26 throws an NSException when
-        // a non-native sample rate is passed. We convert to 16 kHz Float32 manually.
-        // Wrapped in the ObjC shim because installTap raises NSExceptions (seen in
-        // crash logs after multi-day uptime) that Swift cannot catch.
-        try KVAudioEngineHelper.catchException {
-            input.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buf, _ in
-                self?.convertAndHandle(buf, converter: converter, targetFmt: targetFmt)
-            }
-        }
-        tapInstalled = true
+    private func teardownEngine() {
+        guard let engine else { return }
+        NotificationCenter.default.removeObserver(
+            self, name: .AVAudioEngineConfigurationChange, object: engine
+        )
+        KVAudioEngineHelper.removeTap(on: engine.inputNode, bus: 0)
+        engine.stop()
+        self.engine = nil
     }
 
-    private func convertAndHandle(_ buffer: AVAudioPCMBuffer,
-                                   converter: AVAudioConverter,
-                                   targetFmt: AVAudioFormat) {
+    @objc private nonisolated func handleConfigChange() {
+        // AVAudioEngineConfigurationChange arrives on an arbitrary thread, and
+        // the engine must not be deallocated inside the handler. Hopping to the
+        // main actor satisfies both.
+        Task { @MainActor [weak self] in
+            guard let self, self.isCapturing(),
+                  let engine = self.engine,
+                  let targetFmt = self.targetFormat else { return }
+
+            KVAudioEngineHelper.removeTap(on: engine.inputNode, bus: 0)
+            engine.stop()
+            self.resetConverter()
+
+            let input = engine.inputNode
+            let outFmt = input.outputFormat(forBus: 0)
+            guard outFmt.sampleRate > 0, outFmt.channelCount > 0 else {
+                NSLog("KyroVoice: input device gone after config change")
+                return
+            }
+            do {
+                try KVAudioEngineHelper.start(engine)
+                try KVAudioEngineHelper.installTap(
+                    on: input, bus: 0, bufferSize: Self.tapBufferSize, format: nil
+                ) { [weak self] buf, _ in
+                    self?.convertAndHandle(buf, targetFmt: targetFmt)
+                }
+            } catch {
+                NSLog("KyroVoice: audio reconfigure failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Conversion
+
+    private nonisolated func convertAndHandle(_ buffer: AVAudioPCMBuffer,
+                                              targetFmt: AVAudioFormat) {
+        // The converter is built from the format the buffers actually arrive
+        // in, and rebuilt if that format changes under a live tap. Allocating
+        // here is not real-time safe, but it only happens on the first buffer
+        // and on an actual device change.
+        lock.lock()
+        if converter?.inputFormat != buffer.format {
+            converter = AVAudioConverter(from: buffer.format, to: targetFmt)
+        }
+        let conv = converter
+        lock.unlock()
+        guard let conv else { return }
+
         let ratio = targetFmt.sampleRate / buffer.format.sampleRate
         let cap = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 1
         guard let out = AVAudioPCMBuffer(pcmFormat: targetFmt, frameCapacity: cap) else { return }
         var fed = false
-        let status = converter.convert(to: out, error: nil) { _, flag in
+        let status = conv.convert(to: out, error: nil) { _, flag in
             if fed { flag.pointee = .noDataNow; return nil }
             fed = true; flag.pointee = .haveData; return buffer
         }
@@ -227,22 +282,20 @@ public final class AudioRecorder {
         handleInputBuffer(out)
     }
 
-    private func removeTapIfNeeded() {
-        guard tapInstalled else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        tapInstalled = false
-    }
-
     // MARK: - Buffer handler
 
-    private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
+    private nonisolated func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
         // Buffers arrive already in targetFormat (16 kHz mono Float32).
         let rms = Self.rms(of: buffer)
-        if let levelHandler { levelHandler(rms) }
 
         lock.lock()
+        let handler = levelHandler
         let isCapturing = capturing
         lock.unlock()
+        // Called outside the lock: the handler hops to the main actor and must
+        // never run with the audio thread's lock held.
+        handler?(rms)
+
         guard isCapturing,
               let channelPtr = buffer.floatChannelData?[0] else { return }
         let count = Int(buffer.frameLength)
@@ -259,14 +312,17 @@ public final class AudioRecorder {
 
     // MARK: - Helpers
 
-    private static func rms(of buffer: AVAudioPCMBuffer) -> Float {
+    private nonisolated static func rms(of buffer: AVAudioPCMBuffer) -> Float {
         guard let channels = buffer.floatChannelData else { return 0 }
         let frames = Int(buffer.frameLength)
         guard frames > 0 else { return 0 }
         let ptr = channels[0]
         var sum: Float = 0
         for i in 0..<frames { let s = ptr[i]; sum += s * s }
-        return (sum / Float(frames)).squareRoot()
+        let mean = sum / Float(frames)
+        // A non-finite sample would poison the overlay's adaptive normalizer
+        // for the rest of the session.
+        return mean.isFinite ? mean.squareRoot() : 0
     }
 
     private static func requestMicrophonePermission() async -> Bool {

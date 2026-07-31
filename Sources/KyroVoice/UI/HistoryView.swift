@@ -11,6 +11,9 @@ public final class HistoryWindow {
     private init() {}
 
     public func show() {
+        // Entries expire on a 24 h TTL that was only applied on add/load, so a
+        // quiet day left expired rows on screen.
+        HistoryStore.shared.pruneNow()
         if window == nil {
             let host = NSHostingController(rootView: HistoryView()
                 .environmentObject(HistoryStore.shared)
@@ -177,10 +180,18 @@ private struct HistoryEntryRow: View {
         }
     }
 
+    // DateFormatter is expensive to build; this ran once per row per body
+    // evaluation in a lazily-scrolled list of hundreds of entries.
+    private static let todayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "h:mm a"; return f
+    }()
+    private static let olderFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d, h:mm a"; return f
+    }()
+
     private var formattedTimestamp: String {
-        let cal = Calendar.current
-        let fmt = DateFormatter()
-        fmt.dateFormat = cal.isDateInToday(entry.timestamp) ? "h:mm a" : "MMM d, h:mm a"
+        let isToday = Calendar.current.isDateInToday(entry.timestamp)
+        let fmt = isToday ? Self.todayFormatter : Self.olderFormatter
         return fmt.string(from: entry.timestamp)
     }
 }

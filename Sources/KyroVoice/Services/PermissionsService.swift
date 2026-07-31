@@ -54,7 +54,17 @@ public final class PermissionsService: ObservableObject {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
         let opts: CFDictionary = [key: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(opts)
-        refresh()
+        // AXIsProcessTrustedWithOptions returns immediately, before the user has
+        // touched the dialog, so refreshing once here always sampled the
+        // pre-grant value and flipped the row to a red "Denied". Poll instead.
+        Task { @MainActor [weak self] in
+            for _ in 0..<30 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self else { return }
+                self.refresh()
+                if self.accessibility.isGranted { return }
+            }
+        }
     }
 
     /// Triggers the Input Monitoring permission dialog via CoreGraphics.

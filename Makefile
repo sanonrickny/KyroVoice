@@ -1,7 +1,7 @@
 # KyroVoice — familiar targets similar to https://github.com/zachlatta/freeflow
 # Prefer `swift build` + bundle step over raw swiftc because of WhisperKit / SPM.
 
-.PHONY: all build run clean icon
+.PHONY: all build run install clean icon
 
 BUILD_DIR := build
 
@@ -12,6 +12,17 @@ build:
 
 run: build
 	@./run.sh
+
+# Installs into /Applications and relaunches from there. Without this the app
+# in /Applications silently stays at whatever version was last copied by hand,
+# which is how a two-month-old crashing build kept running.
+install: build
+	@pkill -x KyroVoice 2>/dev/null || true
+	@sleep 1
+	@rm -rf /Applications/KyroVoice.app
+	@cp -R .build/KyroVoice.app /Applications/KyroVoice.app
+	@open /Applications/KyroVoice.app
+	@echo "==> Installed and launched /Applications/KyroVoice.app"
 
 clean:
 	rm -rf .build "$(BUILD_DIR)"

@@ -26,6 +26,11 @@ public enum InjectionError: Error, LocalizedError {
 /// Inserts text at the cursor in the frontmost app.
 /// - Default: pasteboard + simulated ⌘V (works almost everywhere).
 /// - AX: direct Accessibility insertion (works in Cocoa apps but unreliable in Electron/web).
+/// `@MainActor` because `inject` is otherwise a nonisolated async method: it
+/// hops off the main actor when awaited, putting every NSPasteboard mutation
+/// and AXUIElement call on a background thread, and racing `strategy` against
+/// the settings sink that writes it.
+@MainActor
 public final class ClipboardInjector {
     /// Kept in sync with `SettingsStore.injectionStrategy` (see `AppDelegate`).
     private var strategy: InjectionStrategyKind
@@ -65,6 +70,7 @@ public final class ClipboardInjector {
 
         pb.clearContents()
         pb.setString(text, forType: .string)
+        let ourChangeCount = pb.changeCount
 
         // KyroVoice is an .accessory app with a .nonactivatingPanel overlay, so
         // the original app retains focus the entire time (recording + Whisper
@@ -79,8 +85,12 @@ public final class ClipboardInjector {
 
         try postCommandV()
 
-        // Restore previous pasteboard contents after the paste settles.
+        // Restore previous pasteboard contents after the paste settles, but only
+        // if nothing else wrote to the pasteboard in the meantime. Without this
+        // check a copy the user makes during the delay gets clobbered by our
+        // stale snapshot.
         try? await Task.sleep(nanoseconds: UInt64(restoreDelay * 1_000_000_000))
+        guard pb.changeCount == ourChangeCount else { return }
         restorePasteboard(pb, items: snapshot)
     }
 
@@ -100,8 +110,11 @@ public final class ClipboardInjector {
     }
 
     private func restorePasteboard(_ pb: NSPasteboard, items: [[NSPasteboard.PasteboardType: Data]]) {
-        guard !items.isEmpty else { return }
+        // Always clear our text first. Bailing out on an empty snapshot left the
+        // dictated text sitting on the system clipboard indefinitely whenever
+        // the clipboard happened to be empty beforehand.
         pb.clearContents()
+        guard !items.isEmpty else { return }
         var newItems: [NSPasteboardItem] = []
         for itemDict in items {
             let item = NSPasteboardItem()
@@ -152,7 +165,13 @@ public final class ClipboardInjector {
             kAXFocusedUIElementAttribute as CFString,
             &focused
         )
-        guard err == .success, let focused else { throw InjectionError.noFocusedElement }
+        // Type-check before the cast: the focused attribute is not guaranteed to
+        // be an AXUIElement (some apps hand back a string or an array), and a
+        // bare `as!` traps the process when it isn't.
+        guard err == .success, let focused,
+              CFGetTypeID(focused) == AXUIElementGetTypeID() else {
+            throw InjectionError.noFocusedElement
+        }
         let element = focused as! AXUIElement
 
         // Try setting the selected text — works in Cocoa text views.
