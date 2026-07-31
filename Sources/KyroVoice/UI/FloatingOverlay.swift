@@ -159,18 +159,11 @@ struct OverlayView: View {
     }
 
     private var micIcon: some View {
-        Group {
-            if #available(macOS 14.0, *) {
-                Image(systemName: "mic.fill")
-                    .foregroundStyle(.red)
-                    .symbolEffect(.pulse, options: .repeating)
-            } else {
-                Image(systemName: "mic.fill")
-                    .foregroundStyle(.red)
-            }
-        }
-        .font(.system(size: 14, weight: .semibold))
-        .frame(width: 18, height: 18)
+        Image(systemName: "mic.fill")
+            .foregroundStyle(.red)
+            .symbolEffect(.pulse, options: .repeating)
+            .font(.system(size: 14, weight: .semibold))
+            .frame(width: 18, height: 18)
     }
 
     private var pillBackground: some View {

@@ -1,6 +1,7 @@
 # KyroVoice 🎙️
 
-Local-first voice dictation for macOS. Powered by Whisper on Apple Silicon.
+Local-first voice dictation for macOS. Powered by NVIDIA Parakeet TDT running
+on the Apple Neural Engine.
 
 ## ✨ Features
 - **100% Private**: All processing happens on-device.
@@ -10,18 +11,20 @@ Local-first voice dictation for macOS. Powered by Whisper on Apple Silicon.
 ## 🚀 Quick Start
 
 ### Requirements
-- macOS 13+ (Apple Silicon)
+- macOS 14+ (Apple Silicon)
 - Xcode 15+
 
 ### Build & Run
 ```bash
-./build.sh
-./run.sh
+./setup_deps.sh   # once: persistent signing identity so TCC grants survive rebuilds
+make install      # build, install to /Applications, relaunch
 ```
+
+`make run` builds and launches from `.build/` instead, without installing.
 
 ## 🛠️ Usage
 - **Hotkey**: `⌘ ⇧ Space` (Hold to talk)
-- **Menu Bar**: Control modes, Whisper models, and settings.
+- **Menu Bar**: Control modes, speech models, history, and settings.
 
 ## 📄 License
 Private / Not for redistribution.

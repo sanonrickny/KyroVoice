@@ -15,7 +15,6 @@ public final class OverlayState: ObservableObject {
 
     @Published public var phase: Phase = .hidden
     @Published public var audioLevel: Float = 0
-    @Published public var transcriptPreview: String = ""
 
     private var normalizer = LiveAudioLevelNormalizer()
 

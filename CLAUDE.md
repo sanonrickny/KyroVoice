@@ -18,18 +18,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Makefile aliases
 make build   # → ./build.sh
 make run     # → ./run.sh
+make install # build, copy to /Applications, relaunch from there
 make clean   # removes .build/
 ```
 
 Build target is `arm64` release only (`swift build -c release --arch arm64`). There is no debug scheme, no test suite, and no CI.
 
-### Web UI (design prototype only — not wired to the app)
-```bash
-cd web && npm run dev    # Vite dev server
-cd web && npm run build  # production build to web/dist/
-```
-
-The React app in `web/` is a standalone visual prototype of the settings UI. It is not loaded by the macOS app at runtime.
+Rick runs `/Applications/KyroVoice.app`, so use `make install`, not `make run`, when a fix needs to reach him.
 
 ## Architecture
 

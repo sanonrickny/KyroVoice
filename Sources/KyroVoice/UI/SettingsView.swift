@@ -568,17 +568,6 @@ struct SettingsView: View {
         }
     }
 
-    private func toggleRow(label: String, hint: String, isOn: Binding<Bool>) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.system(size: 13, weight: .medium))
-                Text(hint).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: isOn).labelsHidden()
-        }
-    }
-
     private func infoNote(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: "info.circle")

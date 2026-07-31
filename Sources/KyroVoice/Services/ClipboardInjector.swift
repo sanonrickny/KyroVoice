@@ -45,10 +45,6 @@ public final class ClipboardInjector {
         self.strategy = strategy
     }
 
-    public var hasAccessibilityPermission: Bool {
-        AXIsProcessTrusted()
-    }
-
     public func inject(_ text: String, targetPID: pid_t = 0) async throws {
         guard !text.isEmpty else { return }
         switch strategy {

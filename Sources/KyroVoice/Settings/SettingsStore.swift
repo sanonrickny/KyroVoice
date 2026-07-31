@@ -16,7 +16,6 @@ public final class SettingsStore: ObservableObject {
         static let hotkeyModifiers  = "kv.hotkey.modifiers"
         static let hotkeyMode       = "kv.hotkey.mode"
         static let injectionMode    = "kv.injection.mode"
-        static let perAppOverrides  = "kv.perAppOverrides"
         static let downloadedModels = "kv.downloadedModels"
     }
 
