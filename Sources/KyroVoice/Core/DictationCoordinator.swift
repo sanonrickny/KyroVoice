@@ -4,14 +4,14 @@ import Combine
 
 /// Central pipeline:
 ///   hotkey-down → recorder.start
-///   hotkey-up   → recorder.stop → whisper → processor → injector
+///   hotkey-up   → recorder.stop → speech → processor → injector
 @MainActor
 public final class DictationCoordinator: ObservableObject {
     @Published public private(set) var isRecording: Bool = false
 
     private let settings: SettingsStore
     private let recorder: AudioRecorder
-    private let whisper: WhisperEngine
+    private let whisper: SpeechEngine
     private let processor: TextProcessor
     private let injector: ClipboardInjector
     private let modeResolver: ModeResolver
@@ -25,7 +25,7 @@ public final class DictationCoordinator: ObservableObject {
     public init(
         settings: SettingsStore,
         recorder: AudioRecorder,
-        whisper: WhisperEngine,
+        whisper: SpeechEngine,
         processor: TextProcessor,
         injector: ClipboardInjector,
         modeResolver: ModeResolver,
@@ -41,13 +41,13 @@ public final class DictationCoordinator: ObservableObject {
         self.overlayState = overlayState
         self.overlay      = overlay
 
-        recorder.levelHandler = { [weak self] rms in
-            DispatchQueue.main.async {
-                self?.overlayState.pushLevel(rms)
+        recorder.setLevelHandler { [weak overlayState] rms in
+            Task { @MainActor in
+                overlayState?.pushLevel(rms)
             }
         }
 
-        // Keep WhisperEngine in sync when model is changed from SettingsView.
+        // Keep SpeechEngine in sync when model is changed from SettingsView.
         settings.$model
             .dropFirst()
             .sink { [weak self] variant in

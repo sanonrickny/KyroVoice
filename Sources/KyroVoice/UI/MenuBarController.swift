@@ -49,7 +49,11 @@ public final class MenuBarController {
 
     private func observeCoordinator() {
         coordinator.$isRecording
-            .receive(on: RunLoop.main)
+            // Not RunLoop.main: that schedules in .default mode only, so while
+            // the status menu is open (NSEventTrackingRunLoopMode) the icon and
+            // the Start/Stop title stop updating, which is exactly when the
+            // user is looking at them. The publisher already fires on the main
+            // actor, so no hop is needed at all.
             .sink { [weak self] recording in
                 guard let self else { return }
                 if let button = self.statusItem.button {
@@ -59,10 +63,30 @@ public final class MenuBarController {
                     button.contentTintColor = recording ? .systemRed : nil
                 }
                 
-                let isPushToTalk = self.settings.hotkeyMode == .pushToTalk
-                self.startStopItem?.title = recording ? "Stop dictation" : (isPushToTalk ? "Hold ⌘⇧Space to dictation" : "Start dictation")
+                self.refreshStartStopTitle(recording: recording)
             }
             .store(in: &cancellables)
+
+        // The title depends on hotkeyMode too, which used to go unobserved:
+        // switching to "Tap to toggle" left it reading "Hold …" until the next
+        // recording.
+        settings.$hotkeyMode
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.refreshStartStopTitle(recording: self.coordinator.isRecording)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func refreshStartStopTitle(recording: Bool) {
+        if recording {
+            startStopItem?.title = "Stop dictation"
+        } else if settings.hotkeyMode == .pushToTalk {
+            // Was hardcoded to "⌘⇧Space" and read "Hold … to dictation".
+            startStopItem?.title = "Hold \(settings.hotkey.displayString) to dictate"
+        } else {
+            startStopItem?.title = "Start dictation"
+        }
     }
 
     // MARK: - Menu construction
@@ -102,7 +126,7 @@ public final class MenuBarController {
         menu.addItem(modeRoot)
 
         // Model submenu
-        let modelRoot = NSMenuItem(title: "Whisper model", action: nil, keyEquivalent: "")
+        let modelRoot = NSMenuItem(title: "Speech model", action: nil, keyEquivalent: "")
         let modelMenu = NSMenu()
         for variant in ModelVariant.allCases {
             let item = NSMenuItem(

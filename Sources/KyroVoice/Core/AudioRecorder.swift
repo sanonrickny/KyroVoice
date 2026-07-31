@@ -27,7 +27,7 @@ public enum AudioRecorderError: Error, LocalizedError {
 }
 
 /// Captures default-input audio and produces 16 kHz mono Float32 PCM
-/// suitable for WhisperKit.
+/// suitable for Parakeet.
 ///
 /// A fresh `AVAudioEngine` is built for every recording and torn down at the
 /// end of it. That is deliberate. A long-lived engine caches a hidden

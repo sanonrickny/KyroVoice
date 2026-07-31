@@ -1,5 +1,5 @@
 # KyroVoice — familiar targets similar to https://github.com/zachlatta/freeflow
-# Prefer `swift build` + bundle step over raw swiftc because of WhisperKit / SPM.
+# Prefer `swift build` + bundle step over raw swiftc because of FluidAudio / SPM.
 
 .PHONY: all build run install clean icon
 

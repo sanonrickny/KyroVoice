@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
-import WhisperKit
+import FluidAudio
 
 @MainActor
 public final class SettingsWindow {
@@ -252,7 +252,7 @@ struct SettingsView: View {
                     }
                 }
 
-                infoNote("Small models download on first use. Large v3 Turbo must be downloaded before selection.")
+                infoNote("Parakeet v2 downloads on first use. Parakeet v3 must be downloaded before selection. Both run entirely on-device on the Neural Engine.")
             }
             .padding(24)
         }
@@ -351,17 +351,17 @@ struct SettingsView: View {
         downloadError = nil
         downloadTask = Task {
             do {
-                let config = WhisperKitConfig(
-                    model: variant.rawValue,
-                    verbose: false,
-                    logLevel: .error,
-                    prewarm: false,
-                    load: false,
-                    download: true
-                )
-                _ = try await WhisperKit(config)
-                guard !Task.isCancelled else { return }
+                _ = try await AsrModels.download(version: variant.asrVersion)
+                // Record the download before honouring cancellation: if the
+                // transfer already finished, the bytes are on disk whether or
+                // not the user hit Cancel, and bailing out here left the UI
+                // offering to re-download hundreds of MB it already has.
                 settings.markDownloaded(variant)
+                guard !Task.isCancelled else {
+                    downloadingVariant = nil
+                    downloadTask = nil
+                    return
+                }
                 settings.model = variant
                 downloadingVariant = nil
                 downloadTask = nil

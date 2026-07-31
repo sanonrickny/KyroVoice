@@ -33,7 +33,7 @@ The React app in `web/` is a standalone visual prototype of the settings UI. It 
 
 ## Architecture
 
-KyroVoice is a **macOS menu-bar app** (no main window) that performs local-on-device voice dictation via WhisperKit and injects transcribed text into the focused app.
+KyroVoice is a **macOS menu-bar app** (no main window) that performs local-on-device voice dictation via NVIDIA Parakeet TDT (CoreML, Apple Neural Engine) and injects transcribed text into the focused app.
 
 ### Dependency graph (wired in `AppDelegate.applicationDidFinishLaunching`)
 
@@ -42,8 +42,8 @@ HotkeyManager ──down/up──▶ DictationCoordinator
                                    │
               ┌────────────────────┼────────────────────┐
               ▼                    ▼                    ▼
-        AudioRecorder        WhisperEngine         TextProcessor
-         (AVAudioEngine)      (WhisperKit actor)   (rule pipeline)
+        AudioRecorder         SpeechEngine         TextProcessor
+         (AVAudioEngine)      (FluidAudio actor)   (rule pipeline)
                                                         │
                                                         ▼
                                                ClipboardInjector
@@ -54,7 +54,7 @@ HotkeyManager ──down/up──▶ DictationCoordinator
       (frontmost app BID)
 ```
 
-`DictationCoordinator` is the central pipeline: hotkey-down starts recording, hotkey-up stops and kicks off `whisper → processor → injector`. Everything is `@MainActor` except `WhisperEngine` (a Swift `actor`).
+`DictationCoordinator` is the central pipeline: hotkey-down starts recording, hotkey-up stops and kicks off `speech → processor → injector`. Everything is `@MainActor` except `SpeechEngine` (a Swift `actor`).
 
 ### Key types
 
@@ -62,7 +62,7 @@ HotkeyManager ──down/up──▶ DictationCoordinator
 |---|---|---|
 | `DictationCoordinator` | `Core/DictationCoordinator.swift` | Pipeline orchestrator |
 | `AudioRecorder` | `Core/AudioRecorder.swift` | AVAudioEngine tap → 16 kHz Float32 PCM |
-| `WhisperEngine` | `Core/Whisper/WhisperEngine.swift` | Swift actor wrapping WhisperKit |
+| `SpeechEngine` | `Core/Speech/SpeechEngine.swift` | Swift actor wrapping FluidAudio's Parakeet TDT |
 | `TextProcessor` | `Core/TextProcessor.swift` | Mode-gated rule pipeline (offline) |
 | `ClipboardInjector` | `Services/ClipboardInjector.swift` | Pasteboard+⌘V or AX text insertion |
 | `ModeResolver` | `Services/ModeResolver.swift` | Maps frontmost app bundle ID → `DictationMode` |
@@ -77,7 +77,7 @@ HotkeyManager ──down/up──▶ DictationCoordinator
 - **`KyroVoice`** — main executable (`Sources/KyroVoice/`)
 - **`KyroVoiceObjC`** — thin Objective-C shim (`Sources/KyroVoiceObjC/`) providing `KVAudioEngineHelper` to safely wrap `AVAudioEngine` start in an ObjC `@try`/`@catch` block (Swift cannot catch ObjC exceptions).
 
-Dependency: `WhisperKit` from `https://github.com/argmaxinc/WhisperKit` (≥ 0.9.0).
+Dependency: `FluidAudio` from `https://github.com/FluidInference/FluidAudio` (≥ 0.15.5), Apache 2.0, no transitive dependencies. Deployment target is macOS 14 (FluidAudio's floor).
 
 ### Dictation modes & text processing
 
@@ -107,4 +107,18 @@ Hardcoded default is ⌘⇧Space (`HotkeyConfig.default`). To change it, edit `S
 
 ### Whisper model storage
 
-Models are downloaded by WhisperKit on first use into `~/Library/Application Support/KyroVoice/Models`. Available variants: `base.en` (≈75 MB) and `small.en` (≈250 MB, default).
+Models are downloaded by FluidAudio on first use into `~/Library/Application Support/FluidAudio/Models`. Available variants: `parakeet-tdt-0.6b-v2` (≈450 MB, English, 2.1% WER, default) and `parakeet-tdt-0.6b-v3` (≈600 MB, 25 European languages, 2.6% WER).
+
+Parakeet emits punctuation, capitalization and inverse text normalization itself ("nine thirty" -> "9.30"), so `TextProcessor` receives already-formatted text.
+
+### Self-checks
+
+There is no test target. Two runnable checks live behind CLI flags:
+
+```bash
+./.build/release/KyroVoice --self-check     # instant, offline: TextProcessor rules
+./.build/release/KyroVoice --speech-check   # end-to-end: `say` -> SpeechEngine -> TextProcessor
+```
+
+`--speech-check` synthesises speech with `say -v Alex`, runs it through the real
+model, and asserts the final injected text. First run downloads the model.

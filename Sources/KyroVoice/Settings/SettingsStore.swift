@@ -44,7 +44,7 @@ public final class SettingsStore: ObservableObject {
 
     private init() {
         let modeRaw      = defaults.string(forKey: Key.mode)  ?? DictationMode.normal.rawValue
-        let modelRaw     = defaults.string(forKey: Key.model) ?? ModelVariant.smallEN.rawValue
+        let modelRaw     = defaults.string(forKey: Key.model) ?? ModelVariant.parakeetV2.rawValue
         let kc           = defaults.object(forKey: Key.hotkeyKeyCode)   as? Int
         let mods         = defaults.object(forKey: Key.hotkeyModifiers) as? Int
         let injRaw       = defaults.string(forKey: Key.injectionMode)   ?? InjectionStrategyKind.pasteboard.rawValue
@@ -54,10 +54,12 @@ public final class SettingsStore: ObservableObject {
         self.downloadedModels = downloaded
 
         // Guard: if stored model requires explicit download but hasn't been downloaded,
-        // fall back to small so the engine doesn't try to use a missing model.
-        let storedVariant = ModelVariant(rawValue: modelRaw) ?? .smallEN
+        // fall back to v2 so the engine doesn't try to use a missing model.
+        // A pre-Parakeet install stores an "openai_whisper-*" value that no longer
+        // maps to a case, so it also lands on v2.
+        let storedVariant = ModelVariant(rawValue: modelRaw) ?? .parakeetV2
         if storedVariant.requiresExplicitDownload && !downloaded.contains(modelRaw) {
-            self.model = .smallEN
+            self.model = .parakeetV2
         } else {
             self.model = storedVariant
         }
@@ -68,7 +70,10 @@ public final class SettingsStore: ObservableObject {
             self.hotkey = .default
         }
 
-        self.hotkeyMode        = .pushToTalk
+        // Was hardcoded to .pushToTalk, so the key written by the didSet was
+        // never read back and "Tap to toggle" silently reverted on relaunch.
+        let hkModeRaw = defaults.string(forKey: Key.hotkeyMode) ?? HotkeyMode.pushToTalk.rawValue
+        self.hotkeyMode        = HotkeyMode(rawValue: hkModeRaw) ?? .pushToTalk
         self.injectionStrategy = InjectionStrategyKind(rawValue: injRaw) ?? .pasteboard
     }
 

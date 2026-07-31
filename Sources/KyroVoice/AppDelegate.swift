@@ -10,7 +10,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hotkey: HotkeyManager!
     private var recorder: AudioRecorder!
-    private var whisper: WhisperEngine!
+    private var whisper: SpeechEngine!
     private var processor: TextProcessor!
     private var injector: ClipboardInjector!
     private var modeResolver: ModeResolver!
@@ -27,7 +27,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Build dependency graph.
         recorder     = AudioRecorder()
-        whisper      = WhisperEngine(variant: settings.model)
+        whisper      = SpeechEngine(variant: settings.model)
         processor    = TextProcessor()
         injector     = ClipboardInjector(strategy: settings.injectionStrategy)
         modeResolver = ModeResolver()
@@ -61,7 +61,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Warm up Whisper in the background so first hotkey press isn't slow.
+        // Warm up the speech model in the background so first hotkey press isn't slow.
         Task.detached(priority: .utility) { [whisper] in
             try? await whisper?.warmUp()
         }
@@ -75,7 +75,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.coordinator.hotkeyReleased()
         }
         if !hotkey.register(settings.hotkey) {
+            // RegisterEventHotKey fails with eventHotKeyExistsErr when another
+            // app already owns the combination. In an .accessory app with no
+            // console that used to be invisible: the whole app just did nothing.
             NSLog("KyroVoice: failed to register hotkey \(settings.hotkey.displayString)")
+            overlayState.phase = .error("\(settings.hotkey.displayString) is already used by another app. KyroVoice can't listen for it.")
+            overlay.show()
+            overlay.scheduleHide(after: 8)
         }
     }
 

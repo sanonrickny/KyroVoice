@@ -3,12 +3,12 @@ import PackageDescription
 
 let package = Package(
     name: "KyroVoice",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [
         .executable(name: "KyroVoice", targets: ["KyroVoice"])
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0")
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.5")
     ],
     targets: [
         .target(
@@ -19,7 +19,7 @@ let package = Package(
         .executableTarget(
             name: "KyroVoice",
             dependencies: [
-                .product(name: "WhisperKit", package: "WhisperKit"),
+                .product(name: "FluidAudio", package: "FluidAudio"),
                 "KyroVoiceObjC"
             ],
             path: "Sources/KyroVoice"

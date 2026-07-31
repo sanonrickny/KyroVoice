@@ -10,6 +10,13 @@ struct KyroVoiceApp: App {
         if CommandLine.arguments.contains("--self-check") {
             TextProcessorSelfCheck.run()
         }
+        // End-to-end speech check. Separate flag because it downloads the model
+        // and takes real time, unlike the instant offline text checks.
+        if CommandLine.arguments.contains("--speech-check") {
+            let sem = DispatchSemaphore(value: 0)
+            Task.detached { await SpeechEngineSelfCheck.run() }
+            sem.wait()  // SpeechEngineSelfCheck.run() never returns; it exits.
+        }
     }
 
     var body: some Scene {
