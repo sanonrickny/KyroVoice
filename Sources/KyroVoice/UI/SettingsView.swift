@@ -38,7 +38,7 @@ final class PermissionsHolder {
 
 // MARK: - Section
 
-private enum SettingsSection: String, CaseIterable, Identifiable {
+enum SettingsSection: String, CaseIterable, Identifiable {
     case general, hotkey, models, permissions, advanced
     var id: String { rawValue }
 
@@ -83,6 +83,13 @@ struct SettingsView: View {
     @State private var downloadingVariant: ModelVariant? = nil
     @State private var downloadTask: Task<Void, Never>? = nil
     @State private var downloadError: String? = nil
+
+    init() {}
+
+    /// Opens on a given pane. Only `--snapshot` passes anything but the default.
+    init(section: SettingsSection) {
+        _selected = State(initialValue: section)
+    }
 
     var body: some View {
         HStack(spacing: 0) {

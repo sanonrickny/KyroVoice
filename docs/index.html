@@ -4,61 +4,53 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KyroVoice</title>
-<meta name="description" content="Local-first voice dictation for macOS. Hold a hotkey, speak, and the text appears at your cursor. Runs NVIDIA Parakeet TDT on the Apple Neural Engine, fully on-device.">
+<meta name="description" content="Voice dictation for macOS that runs entirely on your Mac. Hold a hotkey, speak, and the text appears at your cursor.">
 <meta property="og:title" content="KyroVoice">
-<meta property="og:description" content="Local-first voice dictation for macOS. Parakeet TDT on the Apple Neural Engine. No audio leaves your Mac.">
+<meta property="og:description" content="Voice dictation for macOS that runs entirely on your Mac. No audio is uploaded.">
 <meta property="og:type" content="website">
+<meta name="theme-color" content="#0A0D13">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500;700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230C0F16'/%3E%3Cg fill='%23F0850A'%3E%3Crect x='7' y='13' width='2.4' height='6' rx='1.2'/%3E%3Crect x='12' y='9' width='2.4' height='14' rx='1.2'/%3E%3Crect x='17' y='6' width='2.4' height='20' rx='1.2'/%3E%3Crect x='22' y='11' width='2.4' height='10' rx='1.2'/%3E%3C/g%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500;700&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230A0D13'/%3E%3Cg fill='%23F5A524'%3E%3Crect x='7' y='13' width='2.4' height='6' rx='1.2'/%3E%3Crect x='12' y='9' width='2.4' height='14' rx='1.2'/%3E%3Crect x='17' y='6' width='2.4' height='20' rx='1.2'/%3E%3Crect x='22' y='11' width='2.4' height='10' rx='1.2'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root{
-  --ink:#0C0F16;
-  --ink-soft:#4C5566;
-  --paper:#F2F3F7;
-  --card:#FFFFFF;
-  --rule:#E1E4EB;
-  --indigo:#4B34E8;
-  --amber:#F0850A;
-  --record:#E5484D;
-  --hud:#10131C;
-  --hud-2:#191E2A;
-  --hud-rule:#2A3040;
-  --hud-text:#E8EAF0;
-  --hud-dim:#8B93A6;
+  --ground:#0A0D13;
+  --panel:#121722;
+  --panel-2:#1A2130;
+  --rule:#222A3A;
+  --ink:#EEF1F7;
+  --ink-soft:#8D97AC;
+  --amber:#F5A524;
+  --indigo:#8B7BFF;
+  --record:#F0575C;
+  --green:#3FBF7F;
   --menubar:44px;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:calc(var(--menubar) + 24px)}
 body{
-  margin:0;
-  background:var(--paper);
-  color:var(--ink);
-  font-family:"Newsreader",Georgia,serif;
-  font-size:18px;
-  line-height:1.62;
-  font-weight:400;
+  margin:0;background:var(--ground);color:var(--ink);
+  font-family:"Newsreader",Georgia,serif;font-size:18px;line-height:1.6;font-weight:300;
   -webkit-font-smoothing:antialiased;
 }
-h1,h2,h3,.display{font-family:"Bricolage Grotesque","Helvetica Neue",sans-serif;font-weight:800;letter-spacing:-.025em;line-height:1.02;margin:0}
+h1,h2,h3{font-family:"Bricolage Grotesque","Helvetica Neue",sans-serif;font-weight:800;letter-spacing:-.025em;line-height:1.03;margin:0}
 code,kbd,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
 a{color:inherit}
-.wrap{width:min(1120px,92vw);margin:0 auto}
+img{max-width:100%;height:auto;display:block}
+.wrap{width:min(1080px,92vw);margin:0 auto}
 
-/* ---------- menu bar (the product is a menu bar app, so the nav is one) ---------- */
 .menubar{
   position:fixed;inset:0 0 auto 0;height:var(--menubar);z-index:50;
   display:flex;align-items:center;gap:22px;
-  padding:0 max(18px,calc((100vw - 1120px)/2));
-  background:rgba(242,243,247,.82);
-  backdrop-filter:saturate(180%) blur(20px);
+  padding:0 max(18px,calc((100vw - 1080px)/2));
+  background:rgba(10,13,19,.78);backdrop-filter:saturate(180%) blur(20px);
   -webkit-backdrop-filter:saturate(180%) blur(20px);
   border-bottom:1px solid var(--rule);
-  font-family:"JetBrains Mono",monospace;font-size:12.5px;letter-spacing:.01em;
+  font-family:"JetBrains Mono",monospace;font-size:12.5px;
 }
 .menubar .glyph{display:flex;align-items:flex-end;gap:2.5px;height:15px}
-.menubar .glyph i{display:block;width:2.5px;border-radius:2px;background:var(--ink)}
+.menubar .glyph i{display:block;width:2.5px;border-radius:2px;background:var(--amber)}
 .menubar .glyph i:nth-child(1){height:6px}
 .menubar .glyph i:nth-child(2){height:12px}
 .menubar .glyph i:nth-child(3){height:15px}
@@ -66,163 +58,129 @@ a{color:inherit}
 .menubar .name{font-weight:700}
 .menubar a{text-decoration:none;color:var(--ink-soft);transition:color .15s}
 .menubar a:hover{color:var(--ink)}
-.menubar .right{margin-left:auto;display:flex;gap:20px;align-items:center}
-.menubar .clock{color:var(--ink-soft)}
-@media(max-width:720px){.menubar .hide-sm{display:none}}
+.menubar .right{margin-left:auto;display:flex;gap:20px}
+@media(max-width:760px){.menubar .hide-sm{display:none}}
 
-/* ---------- hero ---------- */
-.hero{padding:calc(var(--menubar) + 88px) 0 40px}
-.eyebrow{
-  font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--ink-soft);margin:0 0 22px;
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-}
-.eyebrow b{color:var(--indigo);font-weight:500}
-.eyebrow .sep{width:16px;height:1px;background:var(--rule)}
-h1{font-size:clamp(40px,7.2vw,86px)}
-h1 .quiet{color:var(--ink-soft);font-weight:500}
-.lede{font-size:clamp(19px,2.1vw,23px);max-width:44ch;margin:26px 0 0;color:#232A38;font-weight:300}
+/* hero */
+.hero{padding:calc(var(--menubar) + 92px) 0 20px}
 .hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
-@media(max-width:940px){.hero-grid{grid-template-columns:1fr;gap:44px}.hero{padding-top:calc(var(--menubar) + 56px)}}
-
-.cta{display:flex;gap:14px;flex-wrap:wrap;margin-top:34px;align-items:center}
-.btn{
-  font-family:"JetBrains Mono",monospace;font-size:13.5px;font-weight:500;
-  text-decoration:none;padding:13px 20px;border-radius:10px;border:1px solid var(--ink);
-  background:var(--ink);color:#fff;transition:transform .12s,box-shadow .12s;
-}
-.btn:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(12,15,22,.18)}
+@media(max-width:940px){.hero-grid{grid-template-columns:1fr;gap:44px}.hero{padding-top:calc(var(--menubar) + 52px)}}
+.eyebrow{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 22px}
+.eyebrow b{color:var(--amber);font-weight:500}
+h1{font-size:clamp(40px,7vw,82px)}
+h1 .quiet{color:var(--ink-soft);font-weight:500}
+.lede{font-size:clamp(19px,2vw,22px);max-width:30ch;margin:24px 0 0;color:#C3CADA}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:32px}
+.btn{font-family:"JetBrains Mono",monospace;font-size:13.5px;font-weight:500;text-decoration:none;
+  padding:13px 20px;border-radius:10px;border:1px solid var(--amber);background:var(--amber);color:#140E02;
+  transition:transform .12s,box-shadow .12s}
+.btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(245,165,36,.22)}
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--rule)}
-.btn.ghost:hover{border-color:var(--ink);box-shadow:none}
+.btn.ghost:hover{border-color:var(--ink-soft);box-shadow:none}
 
-/* ---------- the instrument: faux app window + floating HUD ---------- */
-.stage{position:relative;padding-bottom:64px}
-.win{
-  background:var(--card);border:1px solid var(--rule);border-radius:14px;
-  box-shadow:0 24px 60px -28px rgba(12,15,22,.35),0 2px 6px rgba(12,15,22,.05);
-  overflow:hidden;
-}
-.win-bar{
-  display:flex;align-items:center;gap:8px;padding:11px 14px;
-  border-bottom:1px solid var(--rule);background:#FAFBFD;
-}
-.dot{width:11px;height:11px;border-radius:50%;background:#E3E6ED}
-.dot:nth-child(1){background:#F5A0A2}
-.dot:nth-child(2){background:#F7D08A}
-.dot:nth-child(3){background:#A9DDB1}
-.win-title{
-  margin-left:8px;font-family:"JetBrains Mono",monospace;font-size:11.5px;
-  color:var(--ink-soft);letter-spacing:.02em;
-}
-.win-body{padding:26px 24px 74px;min-height:216px;font-size:19px;line-height:1.6}
+/* the live demo */
+.stage{position:relative}
+.win{background:var(--panel);border:1px solid var(--rule);border-radius:14px;overflow:hidden;
+  box-shadow:0 30px 70px -30px rgba(0,0,0,.9)}
+.win-bar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--rule);background:#0E1219}
+.dot{width:11px;height:11px;border-radius:50%;background:#2A3242}
+.win-title{margin-left:8px;font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-soft)}
+.win-body{padding:26px 24px 76px;min-height:212px;font-size:19px}
 .win-body .typed{white-space:pre-wrap}
 .win-body.code-face .typed{font-family:"JetBrains Mono",monospace;font-size:16px}
-.caret{display:inline-block;width:2px;height:1.05em;background:var(--indigo);vertical-align:-3px;margin-left:1px;animation:blink 1.05s steps(1) infinite}
+.caret{display:inline-block;width:2px;height:1.05em;background:var(--amber);vertical-align:-3px;animation:blink 1.05s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
-.placeholder{color:#9AA2B2;font-weight:300}
 
-.hud{
-  position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
-  width:min(340px,86%);background:var(--hud);border:1px solid var(--hud-rule);
-  border-radius:16px;padding:13px 15px 12px;color:var(--hud-text);
-  box-shadow:0 20px 44px -14px rgba(12,15,22,.55);
-}
+.hud{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(330px,86%);
+  background:#05070B;border:1px solid #262F41;border-radius:16px;padding:13px 15px 12px;
+  box-shadow:0 20px 44px -12px rgba(0,0,0,.85)}
 .hud-top{display:flex;align-items:center;gap:8px;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
 .rec{width:7px;height:7px;border-radius:50%;background:var(--record);transition:background .2s}
-.hud[data-phase="listening"] .rec{box-shadow:0 0 0 0 rgba(229,72,77,.55);animation:pulse 1.5s infinite}
+.hud[data-phase="listening"] .rec{animation:pulse 1.5s infinite}
 .hud[data-phase="processing"] .rec{background:var(--indigo)}
-.hud[data-phase="done"] .rec{background:#2FA96B}
-@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(229,72,77,0)}100%{box-shadow:0 0 0 0 rgba(229,72,77,0)}}
-.hud-phase{color:var(--hud-dim)}
-.hud-mode{margin-left:auto;background:var(--hud-2);border:1px solid var(--hud-rule);border-radius:999px;padding:3px 9px;font-size:10px;color:var(--amber)}
-.wave{display:flex;align-items:center;justify-content:space-between;gap:2px;height:38px;margin-top:11px}
-.wave i{
-  display:block;flex:1;min-width:2px;border-radius:2px;background:var(--amber);
-  height:14%;transform-origin:center;opacity:.85;
-}
+.hud[data-phase="done"] .rec{background:var(--green)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(240,87,92,.5)}70%{box-shadow:0 0 0 7px rgba(240,87,92,0)}100%{box-shadow:0 0 0 0 rgba(240,87,92,0)}}
+.hud-phase{color:var(--ink-soft)}
+.hud-mode{margin-left:auto;background:var(--panel-2);border:1px solid var(--rule);border-radius:999px;padding:3px 9px;font-size:10px;color:var(--amber)}
+.wave{display:flex;align-items:center;gap:2px;height:36px;margin-top:11px}
+.wave i{display:block;flex:1;min-width:2px;border-radius:2px;background:var(--amber);height:14%;opacity:.9}
 .hud[data-phase="listening"] .wave i{animation:bounce 900ms ease-in-out infinite alternate}
-.hud[data-phase="processing"] .wave i{height:12%;background:var(--indigo);opacity:.35;animation:scan 1.1s ease-in-out infinite}
-.hud[data-phase="done"] .wave i{height:12%;background:var(--hud-rule);opacity:1}
+.hud[data-phase="processing"] .wave i{height:12%;background:var(--indigo);opacity:.4;animation:scan 1.1s ease-in-out infinite}
+.hud[data-phase="done"] .wave i{height:12%;background:#2A3242;opacity:1}
 @keyframes bounce{to{height:var(--h,60%)}}
 @keyframes scan{0%,100%{opacity:.2}50%{opacity:.9}}
-.hud-key{margin-top:9px;font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--hud-dim);display:flex;justify-content:space-between}
-kbd{background:var(--hud-2);border:1px solid var(--hud-rule);border-radius:5px;padding:1.5px 5px;font-size:10px}
+.hud-key{margin-top:9px;font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--ink-soft);display:flex;justify-content:space-between}
+kbd{background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;padding:1.5px 5px;font-size:10px;font-family:"JetBrains Mono",monospace}
 
-/* ---------- generic sections ---------- */
-section{padding:96px 0;border-top:1px solid var(--rule)}
-.sec-head{display:grid;grid-template-columns:200px 1fr;gap:40px;margin-bottom:52px;align-items:start}
-@media(max-width:820px){.sec-head{grid-template-columns:1fr;gap:14px;margin-bottom:36px}}
-.sec-label{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);padding-top:9px}
-h2{font-size:clamp(30px,4.4vw,46px);max-width:22ch}
-.sec-head p{margin:16px 0 0;max-width:56ch;color:#232A38;font-weight:300;font-size:19px}
+/* sections */
+section{padding:88px 0;border-top:1px solid var(--rule)}
+.label{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 18px}
+h2{font-size:clamp(28px,4vw,42px);max-width:20ch;margin-bottom:44px}
 
-/* ---------- signal chain (a real sequence, so it is numbered) ---------- */
-.chain{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--card)}
-.link{padding:26px 20px 24px;border-right:1px solid var(--rule);position:relative}
-.link:last-child{border-right:none}
-.link .n{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--indigo);letter-spacing:.1em}
-.link h3{font-size:17px;margin:14px 0 8px;letter-spacing:-.01em}
-.link p{margin:0;font-size:15.5px;line-height:1.55;color:var(--ink-soft);font-weight:300}
-.link .type{display:block;margin-top:14px;font-family:"JetBrains Mono",monospace;font-size:11px;color:#8A93A6}
-.link::after{
-  content:"";position:absolute;right:-5px;top:38px;width:9px;height:9px;
-  border-top:1.5px solid var(--rule);border-right:1.5px solid var(--rule);
-  transform:rotate(45deg);background:var(--card);
+/* real screenshots */
+.shot{border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:var(--panel);
+  box-shadow:0 24px 60px -30px rgba(0,0,0,.9)}
+.shot-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:28px;align-items:start}
+@media(max-width:900px){.shot-grid{grid-template-columns:1fr}}
+.cap{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-soft);margin:14px 0 0}
+.overlay-strip{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:34px;
+  background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:22px 26px}
+.overlay-strip img{width:260px}
+.specs{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px}
+.spec{flex:1;min-width:170px;background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:18px 20px}
+.spec .n{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:26px;letter-spacing:-.02em}
+.spec .k{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink-soft);margin-top:4px}
+
+/* pipeline */
+.chain{border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--panel)}
+.step{display:grid;grid-template-columns:52px 190px 1fr 160px;gap:20px;align-items:baseline;
+  padding:20px 24px;border-bottom:1px solid var(--rule)}
+.step:last-child{border-bottom:none}
+.step .n{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--amber)}
+.step h3{font-size:18px}
+.step p{margin:0;color:var(--ink-soft);font-size:16.5px}
+.step .type{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:#5F6A80;text-align:right}
+@media(max-width:820px){
+  .step{grid-template-columns:44px 1fr;gap:6px 16px;padding:18px 20px}
+  .step .type{grid-column:2;text-align:left;margin-top:6px}
+  .step p{grid-column:2}
 }
-.link:last-child::after{display:none}
-@media(max-width:900px){
-  .chain{grid-template-columns:1fr}
-  .link{border-right:none;border-bottom:1px solid var(--rule)}
-  .link:last-child{border-bottom:none}
-  .link::after{right:auto;left:24px;top:auto;bottom:-5px;transform:rotate(135deg)}
-}
 
-/* ---------- cards ---------- */
-.cards{display:grid;gap:20px}
-.cards.two{grid-template-columns:1fr 1fr}
-.cards.three{grid-template-columns:repeat(3,1fr)}
-@media(max-width:900px){.cards.two,.cards.three{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:28px 26px}
-.card h3{font-size:21px;margin-bottom:6px}
-.card .sub{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-soft);letter-spacing:.02em}
-.card p{font-size:16.5px;color:#2B3240;font-weight:300}
-.tag{display:inline-block;font-family:"JetBrains Mono",monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;padding:4px 9px;border-radius:999px;border:1px solid var(--rule);color:var(--ink-soft);margin-bottom:16px}
-.tag.on{border-color:var(--indigo);color:var(--indigo)}
-.spec{display:flex;gap:26px;margin:20px 0 0;padding-top:18px;border-top:1px solid var(--rule)}
-.spec div{flex:1}
-.spec .k{font-family:"JetBrains Mono",monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-soft)}
-.spec .v{font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:22px;letter-spacing:-.02em;margin-top:3px}
-
-/* ---------- before / after ---------- */
-.xf{margin-top:18px;border-top:1px solid var(--rule);padding-top:16px;font-family:"JetBrains Mono",monospace;font-size:13px;line-height:1.7}
+/* modes */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:900px){.cards{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:14px;padding:24px}
+.card h3{font-size:20px}
+.card .where{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-soft);margin:7px 0 18px}
+.xf{font-family:"JetBrains Mono",monospace;font-size:13px;line-height:1.75;border-top:1px solid var(--rule);padding-top:16px}
 .xf .said{color:var(--ink-soft)}
-.xf .said::before{content:"say ";color:#B2B9C7}
-.xf .got{color:var(--ink);margin-top:6px}
+.xf .said::before{content:"say ";color:#525C70}
+.xf .got{color:var(--ink);margin-top:4px}
 .xf .got::before{content:"got ";color:var(--amber)}
 
-/* ---------- terminal ---------- */
-.term{background:var(--hud);border:1px solid var(--hud-rule);border-radius:14px;overflow:hidden}
-.term-bar{display:flex;gap:7px;padding:11px 14px;border-bottom:1px solid var(--hud-rule);background:#0A0D14}
-.term-bar span{width:10px;height:10px;border-radius:50%;background:#2A3040}
-.term pre{margin:0;padding:22px 24px;font-family:"JetBrains Mono",monospace;font-size:13.5px;line-height:1.95;color:var(--hud-text);overflow-x:auto}
-.term .c{color:#6C7688}
-.term .p{color:var(--amber)}
-.term .o{color:#8B93A6}
-
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
-@media(max-width:900px){.two-col{grid-template-columns:1fr}}
-.facts{list-style:none;margin:0;padding:0}
-.facts li{padding:16px 0;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:150px 1fr;gap:20px;font-size:16.5px;font-weight:300}
+/* facts */
+.facts{list-style:none;margin:24px 0 0;padding:0;display:grid;gap:0}
+.facts li{padding:15px 0;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:170px 1fr;gap:20px;font-size:16.5px}
 .facts li:last-child{border-bottom:none}
-.facts b{font-family:"JetBrains Mono",monospace;font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);font-weight:500;padding-top:4px}
-@media(max-width:560px){.facts li{grid-template-columns:1fr;gap:4px}}
+.facts b{font-family:"JetBrains Mono",monospace;font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);font-weight:500;padding-top:3px}
+@media(max-width:560px){.facts li{grid-template-columns:1fr;gap:3px}}
 
-footer{border-top:1px solid var(--rule);padding:46px 0 60px;font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--ink-soft)}
-footer .row{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+/* terminal */
+.term{background:#05070B;border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+.term-bar{display:flex;gap:7px;padding:11px 14px;border-bottom:1px solid var(--rule)}
+.term-bar span{width:10px;height:10px;border-radius:50%;background:#232B3B}
+.term pre{margin:0;padding:22px 24px;font-family:"JetBrains Mono",monospace;font-size:13.5px;line-height:1.9;overflow-x:auto}
+.term .c{color:#5F6A80}
+.term .p{color:var(--amber)}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+
+footer{border-top:1px solid var(--rule);padding:40px 0 56px;font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--ink-soft)}
+footer .row{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
 footer a{text-decoration:none}
 footer a:hover{color:var(--ink)}
-
-a:focus-visible,.btn:focus-visible{outline:2px solid var(--indigo);outline-offset:3px;border-radius:4px}
+a:focus-visible,.btn:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:4px}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
   html{scroll-behavior:auto}
@@ -234,38 +192,34 @@ a:focus-visible,.btn:focus-visible{outline:2px solid var(--indigo);outline-offse
 <nav class="menubar">
   <span class="glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
   <span class="name">KyroVoice</span>
-  <a href="#pipeline" class="hide-sm">Pipeline</a>
-  <a href="#models" class="hide-sm">Models</a>
+  <a href="#app" class="hide-sm">The app</a>
+  <a href="#pipeline" class="hide-sm">How</a>
   <a href="#modes" class="hide-sm">Modes</a>
-  <a href="#privacy" class="hide-sm">Privacy</a>
+  <a href="#history" class="hide-sm">History</a>
   <span class="right">
     <a href="#install">Install</a>
     <a href="https://github.com/sanonrickny/KyroVoice">GitHub</a>
-    <span class="clock hide-sm">On device</span>
   </span>
 </nav>
 
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <p class="eyebrow">macOS 14+ <span class="sep"></span> Apple silicon <span class="sep"></span> <b>runs on the Neural Engine</b></p>
+      <p class="eyebrow">macOS · Apple silicon · <b>on device</b></p>
       <h1>Speak.<br>The words are<br><span class="quiet">already there.</span></h1>
-      <p class="lede">KyroVoice is a menu bar app that turns your voice into text at the cursor, in whatever app you are already using. The audio never leaves your Mac.</p>
+      <p class="lede">Dictation for macOS that never leaves your Mac.</p>
       <div class="cta">
-        <a class="btn" href="#install">Install it</a>
-        <a class="btn ghost" href="https://github.com/sanonrickny/KyroVoice">Read the source</a>
+        <a class="btn" href="#install">Install</a>
+        <a class="btn ghost" href="https://github.com/sanonrickny/KyroVoice">Source</a>
       </div>
     </div>
-
     <div class="stage">
       <div class="win">
         <div class="win-bar">
           <span class="dot"></span><span class="dot"></span><span class="dot"></span>
           <span class="win-title" id="app-name">Notes</span>
         </div>
-        <div class="win-body" id="win-body">
-          <span class="typed" id="typed"></span><span class="caret"></span>
-        </div>
+        <div class="win-body" id="win-body"><span class="typed" id="typed"></span><span class="caret"></span></div>
       </div>
       <div class="hud" id="hud" data-phase="listening">
         <div class="hud-top">
@@ -274,208 +228,122 @@ a:focus-visible,.btn:focus-visible{outline:2px solid var(--indigo);outline-offse
           <span class="hud-mode" id="mode">Normal</span>
         </div>
         <div class="wave" id="wave" aria-hidden="true"></div>
-        <div class="hud-key">
-          <span><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd> held</span>
-          <span id="engine">Parakeet TDT</span>
-        </div>
+        <div class="hud-key"><span><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd> held</span><span>Parakeet TDT</span></div>
       </div>
     </div>
   </div>
 </header>
 
-<section id="pipeline">
+<section id="app">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-label">The signal chain</div>
+    <p class="label">The app</p>
+    <h2>A menu bar icon and one hotkey.</h2>
+    <div class="shot-grid">
       <div>
-        <h2>Five stages between your voice and your cursor.</h2>
-        <p>Holding the hotkey starts the chain. Releasing it runs the rest. Every stage is local, and the whole thing is one Swift pipeline you can read in an afternoon.</p>
+        <div class="shot"><img src="img/settings.png" width="1240" height="664" alt="KyroVoice settings, Models pane: Parakeet v2 English active, Parakeet v3 multilingual available to download."></div>
+        <p class="cap">Two models. English is on by default.</p>
+      </div>
+      <div>
+        <div class="specs" style="margin-top:0">
+          <div class="spec"><div class="n">2.1%</div><div class="k">v2 word error rate</div></div>
+          <div class="spec"><div class="n">450 MB</div><div class="k">v2 download</div></div>
+        </div>
+        <div class="specs">
+          <div class="spec"><div class="n">25</div><div class="k">v3 languages</div></div>
+          <div class="spec"><div class="n">600 MB</div><div class="k">v3 download</div></div>
+        </div>
+        <p class="cap">Downloaded once, then it works offline.</p>
       </div>
     </div>
-    <div class="chain">
-      <div class="link">
-        <div class="n">01</div>
-        <h3>Hold the key</h3>
-        <p>A Carbon hotkey catches both the press and the release, so push to talk feels like a walkie talkie. Tap to toggle is a setting.</p>
-        <span class="type">HotkeyManager</span>
-      </div>
-      <div class="link">
-        <div class="n">02</div>
-        <h3>Capture</h3>
-        <p>An AVAudioEngine tap pulls microphone audio and resamples it to 16 kHz Float32, the format the model expects.</p>
-        <span class="type">AudioRecorder</span>
-      </div>
-      <div class="link">
-        <div class="n">03</div>
-        <h3>Recognize</h3>
-        <p>Parakeet TDT 0.6B, converted to CoreML, runs on the Apple Neural Engine. It returns punctuation and capitalization on its own.</p>
-        <span class="type">SpeechEngine</span>
-      </div>
-      <div class="link">
-        <div class="n">04</div>
-        <h3>Shape</h3>
-        <p>A deterministic rule pipeline cleans the text for the app you are in. No second model, no network call, no guessing.</p>
-        <span class="type">TextProcessor</span>
-      </div>
-      <div class="link">
-        <div class="n">05</div>
-        <h3>Inject</h3>
-        <p>The text lands at the cursor through the pasteboard with a synthetic ⌘V, or through the accessibility API. Your clipboard is restored after.</p>
-        <span class="type">ClipboardInjector</span>
-      </div>
+    <div class="overlay-strip">
+      <img src="img/overlay.png" width="520" height="72" alt="The KyroVoice floating overlay: a small dark pill with a microphone icon and a red waveform.">
+      <p class="cap" style="margin:0">The overlay while you hold the key.</p>
     </div>
   </div>
 </section>
 
-<section id="models">
+<section id="pipeline">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-label">Models</div>
-      <div>
-        <h2>Two weights, both offline after the first download.</h2>
-        <p>KyroVoice runs NVIDIA Parakeet TDT 0.6B through FluidAudio's CoreML build. The model downloads once into Application Support and stays there. English is the default because it is the more accurate of the two.</p>
-      </div>
-    </div>
-    <div class="cards two">
-      <div class="card">
-        <span class="tag on">Default</span>
-        <h3>Parakeet v2</h3>
-        <div class="sub">parakeet-tdt-0.6b-v2 · English</div>
-        <p>The most accurate option for English dictation. Downloads automatically the first time you dictate.</p>
-        <div class="spec">
-          <div><div class="k">Word error rate</div><div class="v">2.1%</div></div>
-          <div><div class="k">Download</div><div class="v">450 MB</div></div>
-          <div><div class="k">Languages</div><div class="v">1</div></div>
-        </div>
-      </div>
-      <div class="card">
-        <span class="tag">Opt in</span>
-        <h3>Parakeet v3</h3>
-        <div class="sub">parakeet-tdt-0.6b-v3 · Multilingual</div>
-        <p>Twenty five European languages in one model. You ask for it from the menu bar, so a second large download is never a surprise.</p>
-        <div class="spec">
-          <div><div class="k">Word error rate</div><div class="v">2.6%</div></div>
-          <div><div class="k">Download</div><div class="v">600 MB</div></div>
-          <div><div class="k">Languages</div><div class="v">25</div></div>
-        </div>
-      </div>
+    <p class="label">How</p>
+    <h2>Voice in, text at the cursor.</h2>
+    <div class="chain">
+      <div class="step"><span class="n">01</span><h3>Hold the key</h3><p>Press starts it, release ends it.</p><span class="type">HotkeyManager</span></div>
+      <div class="step"><span class="n">02</span><h3>Capture</h3><p>Microphone audio at 16 kHz.</p><span class="type">AudioRecorder</span></div>
+      <div class="step"><span class="n">03</span><h3>Recognize</h3><p>Parakeet TDT on the Neural Engine.</p><span class="type">SpeechEngine</span></div>
+      <div class="step"><span class="n">04</span><h3>Shape</h3><p>Rules clean it up for the app you are in.</p><span class="type">TextProcessor</span></div>
+      <div class="step"><span class="n">05</span><h3>Inject</h3><p>Pasted at the cursor, clipboard restored.</p><span class="type">ClipboardInjector</span></div>
     </div>
   </div>
 </section>
 
 <section id="modes">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-label">Modes</div>
-      <div>
-        <h2>It reads the room before it writes.</h2>
-        <p>KyroVoice checks which app is in front and picks a mode from its bundle ID. VS Code, Xcode and iTerm get Code. Mail and Outlook get Email. Everything else gets your default. You can override it from the menu bar at any time.</p>
-      </div>
-    </div>
-    <div class="cards three">
+    <p class="label">Modes</p>
+    <h2>It knows which app you are in.</h2>
+    <div class="cards">
       <div class="card">
         <h3>Normal</h3>
-        <div class="sub">Notes, Slack, browsers, anywhere else</div>
-        <p>Normalizes whitespace and unicode, drops true disfluencies, fixes punctuation spacing, and capitalizes sentences. Words that only look like filler are left alone.</p>
-        <div class="xf">
-          <div class="said">um the build is green</div>
-          <div class="got">The build is green</div>
-        </div>
+        <div class="where">Notes, Slack, browsers</div>
+        <div class="xf"><div class="said">um the build is green</div><div class="got">The build is green</div></div>
       </div>
       <div class="card">
         <h3>Email</h3>
-        <div class="sub">Mail, Outlook</div>
-        <p>Everything Normal does, plus expanded contractions and small numbers spelled out. Version strings, times and addresses stay untouched.</p>
-        <div class="xf">
-          <div class="said">I've attached the 3 files</div>
-          <div class="got">I have attached the three files</div>
-        </div>
+        <div class="where">Mail, Outlook</div>
+        <div class="xf"><div class="said">I've attached the 3 files</div><div class="got">I have attached the three files</div></div>
       </div>
       <div class="card">
         <h3>Code</h3>
-        <div class="sub">VS Code, Xcode, iTerm</div>
-        <p>Spoken syntax becomes real syntax, longest phrase first, then spacing is tightened around the symbols. Camel, snake, pascal and kebab case are all spoken out loud.</p>
-        <div class="xf">
-          <div class="said">camel case user profile id</div>
-          <div class="got">userProfileId</div>
-        </div>
+        <div class="where">VS Code, Xcode, iTerm</div>
+        <div class="xf"><div class="said">camel case user profile id</div><div class="got">userProfileId</div></div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="speech-check">
+<section id="history">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-label">Self check</div>
-      <div>
-        <h2>It talks to itself to prove it still listens.</h2>
-        <p>There is no test target. There are two flags. The first asserts every text rule offline in a few milliseconds. The second is the interesting one: it uses the macOS speech synthesizer to say a sentence out loud, feeds that audio to the real model, and asserts the text that comes out the other end. Text to speech to text, end to end, on one machine.</p>
-      </div>
-    </div>
-    <div class="term">
-      <div class="term-bar"><span></span><span></span><span></span></div>
-<pre><span class="c"># every TextProcessor rule, offline, instant</span>
-<span class="p">$</span> ./.build/release/KyroVoice --self-check
-<span class="o">TextProcessor self-check: all checks passed</span>
-
-<span class="c"># `say` speaks it, Parakeet transcribes it, the pipeline is asserted</span>
-<span class="p">$</span> ./.build/release/KyroVoice --speech-check
-<span class="o">say -v Alex  ->  audio  ->  SpeechEngine  ->  TextProcessor  ->  ok</span></pre>
+    <p class="label">History</p>
+    <h2>Your last 24 hours, then gone.</h2>
+    <div class="two-col">
+      <div class="shot"><img src="img/history.png" width="920" height="856" alt="The KyroVoice history window listing three recent dictations with their mode, target app and a copy button." loading="lazy"></div>
+      <ul class="facts">
+        <li><b>Kept</b><span>24 hours. Older entries are deleted the moment the window opens.</span></li>
+        <li><b>Stored</b><span>One file on your Mac, readable only by you.</span></li>
+        <li><b>Cleared</b><span>Clear All, any time.</span></li>
+        <li><b>Copy</b><span>Grab any line again without dictating it twice.</span></li>
+      </ul>
     </div>
   </div>
 </section>
 
 <section id="privacy">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-label">Privacy</div>
-      <div>
-        <h2>The only thing that ever leaves is the model download.</h2>
-        <p>Dictation apps usually ship your voice to a server. This one does the recognition on the same chip that runs Face ID. After the model is on disk you can dictate with the Wi-Fi off.</p>
-      </div>
-    </div>
-    <div class="two-col">
-      <ul class="facts">
-        <li><b>Audio</b><span>Held in memory for the length of one hotkey press, then dropped. Nothing is written to disk and nothing is uploaded.</span></li>
-        <li><b>Recognition</b><span>CoreML on the Apple Neural Engine, in process. No API key, no account, no telemetry.</span></li>
-        <li><b>History</b><span>Recent transcripts stay on your Mac so you can copy something again. Clear it from the menu bar.</span></li>
-      </ul>
-      <ul class="facts">
-        <li><b>Microphone</b><span>Required to record while the hotkey is held.</span></li>
-        <li><b>Accessibility</b><span>Required to place text at the cursor through the accessibility API.</span></li>
-        <li><b>Input monitoring</b><span>Required to post the synthetic ⌘V that pastes into the app in front.</span></li>
-      </ul>
-    </div>
+    <p class="label">Privacy</p>
+    <h2>Nothing is uploaded.</h2>
+    <ul class="facts">
+      <li><b>Audio</b><span>Held while you talk, then dropped. Never written to disk.</span></li>
+      <li><b>Recognition</b><span>On the Neural Engine, in process. No account, no telemetry.</span></li>
+      <li><b>Network</b><span>Used once, for the model. After that you can dictate offline.</span></li>
+    </ul>
   </div>
 </section>
 
 <section id="install">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-label">Install</div>
-      <div>
-        <h2>Two commands, then hold the key.</h2>
-        <p>You need macOS 14 or newer on Apple silicon, and Xcode 15 or newer. The setup script creates a persistent signing identity so macOS keeps your permission grants across rebuilds instead of asking again every time.</p>
-      </div>
-    </div>
+    <p class="label">Install</p>
+    <h2>Clone it and build.</h2>
     <div class="two-col">
       <div class="term">
         <div class="term-bar"><span></span><span></span><span></span></div>
 <pre><span class="p">$</span> git clone https://github.com/sanonrickny/KyroVoice.git
 <span class="p">$</span> cd KyroVoice
-
-<span class="c"># once: signing identity, so TCC grants survive rebuilds</span>
-<span class="p">$</span> ./setup_deps.sh
-
-<span class="c"># build, install to /Applications, relaunch</span>
+<span class="p">$</span> ./setup_deps.sh   <span class="c"># once</span>
 <span class="p">$</span> make install</pre>
       </div>
-      <ul class="facts">
-        <li><b>Hotkey</b><span><kbd style="background:#EDEFF4;border-color:var(--rule);color:var(--ink)">⌘ ⇧ Space</kbd> held to talk. Release to inject.</span></li>
-        <li><b>make run</b><span>Builds and launches from .build/ without installing.</span></li>
-        <li><b>First dictation</b><span>Downloads the English model once, about 450 MB. Everything after that is offline.</span></li>
-        <li><b>License</b><span>Private. Not for redistribution.</span></li>
+      <ul class="facts" style="margin-top:0">
+        <li><b>Hotkey</b><span><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd>, held.</span></li>
+        <li><b>Needs</b><span>macOS 14+, Apple silicon, Xcode 15+.</span></li>
+        <li><b>Permissions</b><span>Microphone, Accessibility, Input Monitoring.</span></li>
       </ul>
     </div>
   </div>
@@ -483,7 +351,7 @@ a:focus-visible,.btn:focus-visible{outline:2px solid var(--indigo);outline-offse
 
 <footer>
   <div class="wrap row">
-    <span>KyroVoice · local voice dictation for macOS</span>
+    <span>KyroVoice · dictation for macOS</span>
     <span><a href="https://github.com/sanonrickny/KyroVoice">github.com/sanonrickny/KyroVoice</a></span>
   </div>
 </footer>
@@ -491,7 +359,7 @@ a:focus-visible,.btn:focus-visible{outline:2px solid var(--indigo);outline-offse
 <script>
 (function(){
   var wave = document.getElementById('wave');
-  for (var i = 0; i < 34; i++) {
+  for (var i = 0; i < 32; i++) {
     var b = document.createElement('i');
     b.style.animationDelay = (i * 47 % 620) + 'ms';
     b.style.setProperty('--h', (24 + Math.round(Math.abs(Math.sin(i * 1.7)) * 70)) + '%');
@@ -504,9 +372,9 @@ a:focus-visible,.btn:focus-visible{outline:2px solid var(--indigo);outline-offse
       body = document.getElementById('win-body'), appName = document.getElementById('app-name');
 
   var takes = [
-    {app:'Notes',   mode:'Normal', code:false, text:'The build is green and we ship on Friday.'},
-    {app:'Visual Studio Code', mode:'Code', code:true,  text:'let x = foo(bar);'},
-    {app:'Mail',    mode:'Email', code:false, text:'Hi Rob, I have attached the three files you asked for.'}
+    {app:'Notes', mode:'Normal', code:false, text:'The build is green and we ship on Friday.'},
+    {app:'Visual Studio Code', mode:'Code', code:true, text:'let x = foo(bar);'},
+    {app:'Mail', mode:'Email', code:false, text:'Hi Rob, I have attached the three files you asked for.'}
   ];
   var n = 0;
 

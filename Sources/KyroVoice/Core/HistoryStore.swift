@@ -20,6 +20,13 @@ public final class HistoryStore: ObservableObject {
         load()
     }
 
+    /// In-memory store for `--snapshot`, so rendering the history window for the
+    /// docs cannot touch the real history.json.
+    init(sample: [HistoryEntry]) {
+        storageURL = URL(fileURLWithPath: "/dev/null")
+        entries = sample
+    }
+
     public func add(_ entry: HistoryEntry) {
         entries.insert(entry, at: 0)
         prune()

@@ -20,6 +20,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController!
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        // Renders the UI to PNGs for the docs site and exits. Runs before the
+        // dependency graph so no hotkey is registered and no mic is opened.
+        if let i = CommandLine.arguments.firstIndex(of: "--snapshot") {
+            UISnapshot.run(into: CommandLine.arguments.indices.contains(i + 1)
+                ? CommandLine.arguments[i + 1] : ".")
+        }
+
         NSApp.setActivationPolicy(.accessory)
 
         // Seed permissions service eagerly so settings UI reflects truth.

@@ -117,3 +117,16 @@ There is no test target. Two runnable checks live behind CLI flags:
 
 `--speech-check` synthesises speech with `say -v Alex`, runs it through the real
 model, and asserts the final injected text. First run downloads the model.
+
+### Docs site screenshots
+
+```bash
+./.build/release/KyroVoice --snapshot docs/img   # re-render the PNGs, then exit
+```
+
+`UISnapshot` hosts the real SwiftUI views in a window and draws them into a
+bitmap with `displayIgnoringOpacity`, at 2x and in dark appearance. It needs no
+Screen Recording grant, unlike `screencapture`. The history window is rendered
+from `HistoryStore(sample:)` so the real `history.json` is never touched or
+published. The AppKit menu bar dropdown cannot be captured this way; menus are
+drawn by the window server.
