@@ -3,6 +3,8 @@
 Local-first voice dictation for macOS. Powered by NVIDIA Parakeet TDT running
 on the Apple Neural Engine.
 
+**[Site: sanonrickny.github.io/KyroVoice](https://sanonrickny.github.io/KyroVoice/)** — pipeline, models, and modes.
+
 ## ✨ Features
 - **100% Private**: All processing happens on-device.
 - **Smart Modes**: Normal, Email, and Code-optimized dictation.
