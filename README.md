@@ -28,5 +28,10 @@ make install      # build, install to /Applications, relaunch
 - **Hotkey**: `⌘ ⇧ Space` (Hold to talk)
 - **Menu Bar**: Control modes, speech models, history, and settings.
 
+## 📚 Documentation
+- **[User Guide](docs/USER_GUIDE.md)** - install, permissions, modes, speaking code, troubleshooting.
+- **[Architecture](docs/ARCHITECTURE.md)** - component graph, pipeline, concurrency model, design decisions.
+- **[Development](docs/DEVELOPMENT.md)** - build system, code map, self-checks, invariants, debugging.
+
 ## 📄 License
 Private / Not for redistribution.
