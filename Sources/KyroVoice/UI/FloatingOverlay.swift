@@ -110,13 +110,10 @@ struct OverlayView: View {
     private var pillContent: some View {
         switch state.phase {
         case .listening:
-            HStack(spacing: 8) {
-                micIcon
-                WaveformBars(audioLevel: state.audioLevel, tint: .red, showsActivityPulse: true)
-                    .frame(width: 40, height: 16)
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 8)
+            // ponytail: bars only. The mic glyph said nothing the bars don't.
+            WaveformBars(audioLevel: state.audioLevel)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
 
         case .processing:
             ProgressView()
@@ -158,81 +155,68 @@ struct OverlayView: View {
         }
     }
 
-    private var micIcon: some View {
-        Image(systemName: "mic.fill")
-            .foregroundStyle(.red)
-            .symbolEffect(.pulse, options: .repeating)
-            .font(.system(size: 14, weight: .semibold))
-            .frame(width: 18, height: 18)
-    }
-
     private var pillBackground: some View {
-        RoundedRectangle(cornerRadius: 11, style: .continuous)
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
             .fill(.ultraThinMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
             )
     }
 }
 
-struct WaveformBar: View {
-    let amplitude: CGFloat
-    let tint: Color
-    private let minHeight: CGFloat = 2
-    private let maxHeight: CGFloat = 16
-
-    var body: some View {
-        Capsule()
-            .fill(tint.opacity(0.85))
-            .frame(width: 2.5, height: minHeight + (maxHeight - minHeight) * amplitude)
-    }
-}
-
+/// The listening pebble: a bank of capsules whose heights track the live input
+/// level, with a travelling shimmer so it still breathes during silence.
+///
+/// `Color.primary` rather than a fixed white: the panel inherits the system
+/// appearance, and white bars vanish on the light-mode material.
 struct WaveformBars: View {
     let audioLevel: Float
-    let tint: Color
-    var showsActivityPulse: Bool = false
 
-    private static let barCount = 9
-    private static let multipliers: [CGFloat] = [0.35, 0.55, 0.75, 0.9, 1.0, 0.9, 0.75, 0.55, 0.35]
-    private static let centerIndex = CGFloat((barCount - 1) / 2)
+    private static let barCount = 11
+    private static let centerIndex = CGFloat(barCount - 1) / 2
+    private static let minHeight: CGFloat = 2.5
+    private static let maxHeight: CGFloat = 16
 
     var body: some View {
-        Group {
-            if showsActivityPulse {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
-                    bars(pulseTime: context.date.timeIntervalSinceReferenceDate)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .center, spacing: 2.5) {
+                ForEach(0..<Self.barCount, id: \.self) { i in
+                    Capsule()
+                        .fill(Color.primary.opacity(0.85))
+                        .frame(width: 2.5, height: height(for: i, at: t))
+                        .animation(
+                            .spring(response: response(for: i), dampingFraction: 0.88)
+                            .delay(delay(for: i)),
+                            value: audioLevel
+                        )
                 }
-            } else {
-                bars(pulseTime: nil)
             }
         }
-        .frame(height: 16)
+        .frame(height: Self.maxHeight)
     }
 
-    private func bars(pulseTime: TimeInterval?) -> some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(0..<Self.barCount, id: \.self) { i in
-                WaveformBar(amplitude: amplitude(for: i, pulseTime: pulseTime), tint: tint)
-                    .animation(
-                        .spring(response: response(for: i), dampingFraction: 0.88)
-                        .delay(delay(for: i)),
-                        value: audioLevel
-                    )
-            }
-        }
+    private func height(for index: Int, at time: TimeInterval) -> CGFloat {
+        let a = amplitude(for: index, at: time)
+        return Self.minHeight + (Self.maxHeight - Self.minHeight) * a
     }
 
-    private func amplitude(for index: Int, pulseTime: TimeInterval?) -> CGFloat {
+    /// Bell-shaped envelope, tallest in the middle, scaled by the live level.
+    private static func envelope(_ index: Int) -> CGFloat {
+        let t = CGFloat(index) / CGFloat(barCount - 1)
+        return 0.35 + 0.65 * sin(t * .pi)
+    }
+
+    private func amplitude(for index: Int, at time: TimeInterval) -> CGFloat {
         let level = CGFloat(max(audioLevel, 0))
-        let base = min(level * Self.multipliers[index], 1.0)
-        guard let t = pulseTime else { return base }
+        let base = min(level * Self.envelope(index), 1.0)
 
-        let wave = CGFloat(0.5 + 0.5 * sin((t * 6.2) - Double(index) * 0.78))
-        let shimmer = CGFloat(0.5 + 0.5 * sin((t * 3.1) + Double(index) * 0.5))
+        let wave = CGFloat(0.5 + 0.5 * sin((time * 6.2) - Double(index) * 0.78))
+        let shimmer = CGFloat(0.5 + 0.5 * sin((time * 3.1) + Double(index) * 0.5))
         let pulse = wave * 0.22 + shimmer * 0.06
 
+        // Loud → the envelope dominates; silent → only the idle shimmer is left.
         return min(base * (0.74 + pulse) + (1.0 - base) * (0.04 + pulse * 0.28), 1.0)
     }
 
