@@ -211,12 +211,17 @@ misbehaving.
 
 | Method | How | When |
 |---|---|---|
-| **Pasteboard + ⌘V** (default) | Copies the text and sends a synthetic ⌘V, then restores your clipboard. | Works nearly everywhere. |
+| **Type text** (default) | Types the text as keyboard input. | Your clipboard is never touched. Works nearly everywhere. |
+| **Pasteboard + ⌘V** | Copies the text and sends a synthetic ⌘V, then restores your clipboard. | Use it if an app drops or mangles typed characters. |
 | **Accessibility** | Writes directly into the focused text field via the Accessibility API. | Leaves the clipboard untouched. Reliable in native Cocoa apps, unreliable in Electron and web views. |
 | **Auto** | Tries Accessibility, falls back to pasteboard. | Compromise if you dislike the clipboard round-trip. |
 
-Your clipboard is restored about 400 ms after the paste, and only if you have not
-copied something else in the meantime.
+With **Type text** your clipboard is left alone entirely.
+
+With **Pasteboard + ⌘V**, your clipboard holds the dictation for about 400 ms
+before the previous contents are restored, and only if you have not copied
+something else in the meantime. Anything you paste in that window pastes the
+dictation instead.
 
 ---
 

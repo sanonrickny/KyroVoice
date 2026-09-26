@@ -38,6 +38,9 @@ public actor SpeechEngine {
 
     private var manager: AsrManager?
     private var loadTask: Task<Void, Error>?
+    /// A real transcription waits for this rather than sharing the manager
+    /// with a warm-up inference mid-flight.
+    private var rewarmTask: Task<Void, Never>?
 
     public init(variant: ModelVariant = .parakeetV2) {
         self.variant = variant
@@ -55,6 +58,9 @@ public actor SpeechEngine {
                 let models = try await AsrModels.downloadAndLoad(version: variant.asrVersion)
                 let manager = AsrManager(config: .default)
                 try await manager.loadModels(models)
+                // Run one throwaway inference before reporting ready, so the
+                // first real dictation doesn't pay the ANE warm-up cost.
+                await Self.runDummyInference(on: manager)
                 self.manager = manager
                 self.loadState = .ready
             } catch {
@@ -65,6 +71,32 @@ public actor SpeechEngine {
         loadTask = task
         defer { loadTask = nil }
         try await task.value
+    }
+
+    /// Re-run the warm-up inference on an already loaded model. Called after
+    /// wake from sleep, when the ANE may have dropped its compiled state.
+    public func rewarm() async {
+        guard loadState == .ready, let manager, rewarmTask == nil else { return }
+        let task = Task { await Self.runDummyInference(on: manager) }
+        rewarmTask = task
+        await task.value
+        rewarmTask = nil
+    }
+
+    /// One second of near-silent noise. Pure zeros are avoided in case the
+    /// model path treats them as a degenerate input.
+    private static func runDummyInference(on manager: AsrManager) async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let samples = (0..<16_000).map { _ in Float.random(in: -0.001...0.001) }
+        let layers = await manager.decoderLayerCount
+        guard var state = try? TdtDecoderState(decoderLayers: layers) else { return }
+        do {
+            _ = try await manager.transcribe(samples, decoderState: &state)
+            NSLog("KyroVoice: speech warm-up inference took \((clock.now - start).kvMilliseconds) ms")
+        } catch {
+            NSLog("KyroVoice: speech warm-up inference failed: \(error.localizedDescription)")
+        }
     }
 
     /// Switch variant. Triggers a reload on next `warmUp()` / `transcribe`.
@@ -84,6 +116,7 @@ public actor SpeechEngine {
     /// Transcribe a 16 kHz mono Float32 sample buffer.
     public func transcribe(samples: [Float]) async throws -> String {
         if loadState != .ready { try await warmUp() }
+        await rewarmTask?.value
         guard let manager else { throw SpeechEngineError.notReady }
         guard !samples.isEmpty else {
             throw SpeechEngineError.invalidAudio(reason: "empty buffer")
@@ -103,7 +136,13 @@ public actor SpeechEngine {
             // context from one injection into the next.
             let layers = await manager.decoderLayerCount
             var state = try TdtDecoderState(decoderLayers: layers)
-            let result = try await manager.transcribe(samples, decoderState: &state)
+            // FluidAudio rejects clips under 0.3 s, so a quick "yes" surfaced as
+            // "Transcription failed". The model pads every clip under 15 s to
+            // 15 s anyway, so trailing silence up to 1 s costs nothing.
+            let padded = samples.count < 16_000
+                ? samples + [Float](repeating: 0, count: 16_000 - samples.count)
+                : samples
+            let result = try await manager.transcribe(padded, decoderState: &state)
             try Task.checkCancellation()
             return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch is CancellationError {

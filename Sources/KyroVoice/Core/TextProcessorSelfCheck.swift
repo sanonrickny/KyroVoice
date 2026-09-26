@@ -48,6 +48,20 @@ enum TextProcessorSelfCheck {
         expect("path back slash n", .code, "path \\ n", "backslash survives the template")
         expect("cost dollar sign five", .code, "cost $ five", "dollar sign survives the template")
 
+        // User replacements: whole word, case-insensitive, written casing kept.
+        let list = FileManager.default.temporaryDirectory.appendingPathComponent("kv-replacements.txt")
+        try? "# comment => ignored\nkyro voice => KyroVoice\nc plus plus => C++\n".write(to: list, atomically: true, encoding: .utf8)
+        let withList = TextProcessor(replacementsURL: list)
+        for (input, want) in [("Open Kyro Voice now.", "Open KyroVoice now."),
+                              ("I write c plus plus daily", "I write C++ daily"),
+                              ("the kyro voiceover", "The kyro voiceover")] {
+            let got = withList.process(input, mode: .normal)
+            if got != want {
+                failures += 1
+                print("FAIL replacement\n   in:   \(input)\n   want: \(want)\n   got:  \(got)")
+            }
+        }
+
         if failures == 0 {
             print("TextProcessor self-check: all checks passed")
             exit(0)

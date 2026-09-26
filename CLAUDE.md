@@ -22,6 +22,8 @@ make install # build, copy to /Applications, relaunch from there
 make clean   # removes .build/
 ```
 
+On Command Line Tools for macOS 27 (no Xcode), the default build fails: that SDK's `@State` is a macro whose plugin only ships with Xcode. `build.sh` then retries with the newest macOS 26 SDK and `--build-system native`.
+
 Build target is `arm64` release only (`swift build -c release --arch arm64`). There is no debug scheme, no test suite, and no CI.
 
 Rick runs `/Applications/KyroVoice.app`, so use `make install`, not `make run`, when a fix needs to reach him.
@@ -72,7 +74,7 @@ HotkeyManager ──down/up──▶ DictationCoordinator
 - **`KyroVoice`** — main executable (`Sources/KyroVoice/`)
 - **`KyroVoiceObjC`** — thin Objective-C shim (`Sources/KyroVoiceObjC/`) providing `KVAudioEngineHelper` to safely wrap `AVAudioEngine` start in an ObjC `@try`/`@catch` block (Swift cannot catch ObjC exceptions).
 
-Dependency: `FluidAudio` from `https://github.com/FluidInference/FluidAudio` (≥ 0.15.5), Apache 2.0, no transitive dependencies. Deployment target is macOS 14 (FluidAudio's floor).
+Dependency: `FluidAudio` from `https://github.com/FluidInference/FluidAudio` (≥ 0.15.7), Apache 2.0, no transitive dependencies. Its default `NemoTextProcessing` trait (a prebuilt Rust text normalizer for TTS) is disabled with `traits: []`, which needs swift-tools-version 6.1; `swiftLanguageModes: [.v5]` keeps the Swift 5 concurrency checks. Deployment target is macOS 14 (FluidAudio's floor).
 
 ### Dictation modes & text processing
 
@@ -84,7 +86,8 @@ Dependency: `FluidAudio` from `https://github.com/FluidInference/FluidAudio` (�
 
 ### Text injection strategies (`InjectionStrategyKind`)
 
-- **pasteboard** (default): snapshots the current pasteboard, writes text, posts synthetic ⌘V, then restores the original pasteboard after 200 ms.
+- **typing** (default): posts the text as synthetic Unicode key events (`keyboardSetUnicodeString`), at most 20 UTF-16 units per event, split only between Characters, with the modifier flags explicitly cleared. The clipboard is never touched. Checked by `--typing-check`.
+- **pasteboard**: snapshots the current pasteboard, writes text, posts synthetic ⌘V after 30 ms, then restores the original pasteboard 400 ms later. The escape hatch for apps that read the virtual key code instead of the Unicode string.
 - **accessibility**: uses `AXUIElementSetAttributeValue(kAXSelectedTextAttribute)` — works in Cocoa apps, unreliable in Electron/web.
 - **auto**: tries AX, falls back to pasteboard on error.
 
@@ -104,6 +107,8 @@ Hardcoded default is ⌘⇧Space (`HotkeyConfig.default`). To change it, edit `S
 
 Models are downloaded by FluidAudio on first use into `~/Library/Application Support/FluidAudio/Models`. Available variants: `parakeet-tdt-0.6b-v2` (≈450 MB, English, 2.1% WER, default) and `parakeet-tdt-0.6b-v3` (≈600 MB, 25 European languages, 2.6% WER).
 
+User word replacements live in `~/Library/Application Support/KyroVoice/replacements.txt` (`heard => written`, one per line), opened from the menu bar's "Word Replacements…". `TextProcessor` applies them last, in every mode.
+
 Parakeet emits punctuation, capitalization and inverse text normalization itself ("nine thirty" -> "9.30"), so `TextProcessor` receives already-formatted text.
 
 ### Self-checks
@@ -113,6 +118,12 @@ There is no test target. Two runnable checks live behind CLI flags:
 ```bash
 ./.build/release/KyroVoice --self-check     # instant, offline: TextProcessor rules
 ./.build/release/KyroVoice --speech-check   # end-to-end: `say` -> SpeechEngine -> TextProcessor
+./.build/release/KyroVoice --overlay-check  # HUD phase -> panel visibility
+
+# --typing-check posts real key events, so it needs the bundle's Accessibility
+# grant: run it through LaunchServices, not from the terminal binary.
+open -n -W --stdout /tmp/typing.out --stderr /tmp/typing.out \
+    -a /Applications/KyroVoice.app --args --typing-check; cat /tmp/typing.out
 ```
 
 `--speech-check` synthesises speech with `say -v Alex`, runs it through the real

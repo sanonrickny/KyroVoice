@@ -522,7 +522,7 @@ struct SettingsView: View {
                     }
                 }
 
-                infoNote("Pasteboard works in nearly every app. Accessibility is faster in Cocoa apps but unreliable in Electron-based apps.")
+                infoNote("Type text never touches your clipboard. Pasteboard briefly swaps your clipboard for the dictation; use it if an app drops typed characters. Accessibility is faster in Cocoa apps but unreliable in Electron-based apps.")
             }
             .padding(24)
         }

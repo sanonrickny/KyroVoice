@@ -24,7 +24,8 @@ public enum InjectionError: Error, LocalizedError {
 }
 
 /// Inserts text at the cursor in the frontmost app.
-/// - Default: pasteboard + simulated ⌘V (works almost everywhere).
+/// - Default: typed as synthetic Unicode key events. The clipboard is never touched.
+/// - Pasteboard: pasteboard + simulated ⌘V, then the old clipboard is restored.
 /// - AX: direct Accessibility insertion (works in Cocoa apps but unreliable in Electron/web).
 /// `@MainActor` because `inject` is otherwise a nonisolated async method: it
 /// hops off the main actor when awaited, putting every NSPasteboard mutation
@@ -36,7 +37,7 @@ public final class ClipboardInjector {
     private var strategy: InjectionStrategyKind
     private let restoreDelay: TimeInterval
 
-    public init(strategy: InjectionStrategyKind = .pasteboard, restoreDelay: TimeInterval = 0.40) {
+    public init(strategy: InjectionStrategyKind = .typing, restoreDelay: TimeInterval = 0.40) {
         self.strategy = strategy
         self.restoreDelay = restoreDelay
     }
@@ -48,6 +49,7 @@ public final class ClipboardInjector {
     public func inject(_ text: String, targetPID: pid_t = 0) async throws {
         guard !text.isEmpty else { return }
         switch strategy {
+        case .typing:        try typeInject(text)
         case .pasteboard:    try await pasteboardInject(text, targetPID: targetPID)
         case .accessibility: try axInject(text)
         case .auto:
@@ -56,10 +58,51 @@ public final class ClipboardInjector {
         }
     }
 
+    // MARK: - Typing
+
+    /// Posts the text as Unicode key events, so the clipboard is never used.
+    ///
+    /// Each event carries at most 20 UTF-16 units (longer strings are
+    /// truncated by the window server), and chunks break only between
+    /// Characters so an emoji or accented letter is never split in half.
+    /// ponytail: apps that read the virtual key code instead of the Unicode
+    /// string (some games, VMs, remote desktops) type garbage here; the
+    /// Pasteboard strategy is the escape hatch for those.
+    func typeInject(_ text: String) throws {
+        guard let source = CGEventSource(stateID: .hidSystemState) else {
+            throw InjectionError.inputMonitoringDenied
+        }
+        var chunk: [UniChar] = []
+        func post() throws {
+            guard !chunk.isEmpty else { return }
+            for keyDown in [true, false] {
+                guard let event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: keyDown) else {
+                    throw InjectionError.inputMonitoringDenied
+                }
+                // Explicitly no modifiers: a still-held ⌘ would turn the
+                // carrier key (A) into Select All and the text would replace it.
+                event.flags = []
+                chunk.withUnsafeBufferPointer {
+                    event.keyboardSetUnicodeString(stringLength: $0.count, unicodeString: $0.baseAddress)
+                }
+                event.post(tap: .cghidEventTap)
+            }
+            chunk.removeAll(keepingCapacity: true)
+        }
+        for character in text {
+            let units = Array(String(character).utf16)
+            if chunk.count + units.count > 20 { try post() }
+            chunk += units
+        }
+        try post()
+    }
+
     // MARK: - Pasteboard + Cmd+V
 
     private func pasteboardInject(_ text: String, targetPID: pid_t) async throws {
         let pb = NSPasteboard.general
+        let clock = ContinuousClock()
+        let start = clock.now
 
         // Snapshot full pasteboard (all types) for restore.
         let snapshot = snapshotPasteboard(pb)
@@ -77,9 +120,12 @@ public final class ClipboardInjector {
         // activation callback fires after we post the key event.)
         //
         // Give the pasteboard write time to propagate to the target process.
-        try? await Task.sleep(nanoseconds: 100_000_000) // 100 ms
+        // ponytail: fixed 30 ms (was 100 ms). If an app pastes the previous
+        // clipboard instead of the dictation, raise this or make it per-app.
+        try? await Task.sleep(nanoseconds: 30_000_000)
 
         try postCommandV()
+        NSLog("KyroVoice: timing paste posted \((clock.now - start).kvMilliseconds) ms after inject start")
 
         // Restore previous pasteboard contents after the paste settles, but only
         // if nothing else wrote to the pasteboard in the meantime. Without this

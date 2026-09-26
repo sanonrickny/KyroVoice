@@ -15,7 +15,9 @@ public final class SettingsStore: ObservableObject {
         static let hotkeyKeyCode    = "kv.hotkey.keyCode"
         static let hotkeyModifiers  = "kv.hotkey.modifiers"
         static let hotkeyMode       = "kv.hotkey.mode"
-        static let injectionMode    = "kv.injection.mode"
+        // New key: the old "kv.injection.mode" held `pasteboard` for every
+        // install, and that default is what clobbered the user's clipboard.
+        static let injectionMode    = "kv.injection.strategy"
         static let downloadedModels = "kv.downloadedModels"
     }
 
@@ -46,7 +48,7 @@ public final class SettingsStore: ObservableObject {
         let modelRaw     = defaults.string(forKey: Key.model) ?? ModelVariant.parakeetV2.rawValue
         let kc           = defaults.object(forKey: Key.hotkeyKeyCode)   as? Int
         let mods         = defaults.object(forKey: Key.hotkeyModifiers) as? Int
-        let injRaw       = defaults.string(forKey: Key.injectionMode)   ?? InjectionStrategyKind.pasteboard.rawValue
+        let injRaw       = defaults.string(forKey: Key.injectionMode)   ?? InjectionStrategyKind.typing.rawValue
         let downloaded   = Set(defaults.stringArray(forKey: Key.downloadedModels) ?? [])
 
         self.mode             = DictationMode(rawValue: modeRaw) ?? .normal
@@ -73,7 +75,7 @@ public final class SettingsStore: ObservableObject {
         // never read back and "Tap to toggle" silently reverted on relaunch.
         let hkModeRaw = defaults.string(forKey: Key.hotkeyMode) ?? HotkeyMode.pushToTalk.rawValue
         self.hotkeyMode        = HotkeyMode(rawValue: hkModeRaw) ?? .pushToTalk
-        self.injectionStrategy = InjectionStrategyKind(rawValue: injRaw) ?? .pasteboard
+        self.injectionStrategy = InjectionStrategyKind(rawValue: injRaw) ?? .typing
     }
 
     /// Marks a model as successfully downloaded so the UI shows it as selectable.
@@ -89,6 +91,7 @@ public final class SettingsStore: ObservableObject {
 }
 
 public enum InjectionStrategyKind: String, CaseIterable, Identifiable, Codable, Sendable {
+    case typing
     case pasteboard
     case accessibility
     case auto
@@ -97,7 +100,8 @@ public enum InjectionStrategyKind: String, CaseIterable, Identifiable, Codable, 
 
     public var displayName: String {
         switch self {
-        case .pasteboard:    return "Pasteboard + ⌘V (recommended)"
+        case .typing:        return "Type text (recommended)"
+        case .pasteboard:    return "Pasteboard + ⌘V"
         case .accessibility: return "Accessibility (experimental)"
         case .auto:          return "Auto (try AX, fall back)"
         }

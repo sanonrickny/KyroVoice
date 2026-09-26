@@ -14,7 +14,16 @@ APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 ENTITLEMENTS="Resources/KyroVoice.entitlements"
 
 echo "==> Building ${APP_NAME} (release, arm64)…"
-swift build -c release --arch arm64
+# ponytail: the Command Line Tools for macOS 27 ship an SDK whose @State is a
+# macro, but not the SwiftUIMacros plugin (that comes with Xcode), and the new
+# build system cannot parse that SDK at all. Fall back to the newest older SDK.
+# Drop this once Xcode is installed or the CLT ships the plugin.
+if ! swift build -c release --arch arm64; then
+    FALLBACK_SDK=$(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX2[0-6].*.sdk 2>/dev/null | sort -V | tail -1)
+    [ -n "$FALLBACK_SDK" ] || exit 1
+    echo "==> Retrying with $FALLBACK_SDK"
+    SDKROOT="$FALLBACK_SDK" swift build -c release --arch arm64 --build-system native
+fi
 
 echo "==> Assembling ${APP_BUNDLE}…"
 rm -rf "$APP_BUNDLE"

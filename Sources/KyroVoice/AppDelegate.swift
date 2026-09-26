@@ -27,6 +27,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 ? CommandLine.arguments[i + 1] : ".")
         }
 
+        // Drives the overlay state machine and checks the panel follows it.
+        if CommandLine.arguments.contains("--overlay-check") {
+            OverlayCheck.run()
+        }
+
+        // Types a sample into its own window and checks the clipboard is untouched.
+        // Deferred: the app cannot activate its window until launch finishes,
+        // and the check needs key-window focus to read back what it typed.
+        if CommandLine.arguments.contains("--typing-check") {
+            DispatchQueue.main.async { TypingCheck.run() }
+            return
+        }
+
         NSApp.setActivationPolicy(.accessory)
 
         // Seed permissions service eagerly so settings UI reflects truth.
@@ -35,7 +48,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // Build dependency graph.
         recorder     = AudioRecorder()
         whisper      = SpeechEngine(variant: settings.model)
-        processor    = TextProcessor()
+        processor    = TextProcessor(replacementsURL: TextProcessor.replacementsURL)
         injector     = ClipboardInjector(strategy: settings.injectionStrategy)
         modeResolver = ModeResolver()
         overlayState = OverlayState()
@@ -51,6 +64,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             overlay: overlay
         )
         menuBar = MenuBarController(coordinator: coordinator, settings: settings)
+        overlay.prewarm()
 
         settings.$injectionStrategy
             .dropFirst()
@@ -63,6 +77,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             do {
                 try await recorder.prepare()
+                AudioRecorder.prewarmInputDevice()
             } catch {
                 NSLog("KyroVoice: audio prepare failed: \(error.localizedDescription)")
             }
@@ -72,6 +87,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         Task.detached(priority: .utility) { [whisper] in
             try? await whisper?.warmUp()
         }
+
+        // Sleep can evict the compiled model from the Neural Engine, which
+        // makes the first dictation after wake slow. Warm it again.
+        NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.didWakeNotification)
+            .sink { [whisper] _ in
+                AudioRecorder.prewarmInputDevice()
+                Task.detached(priority: .utility) { await whisper?.rewarm() }
+            }
+            .store(in: &cancellables)
 
         // Register the global hotkey.
         hotkey = HotkeyManager()
@@ -87,7 +112,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             // console that used to be invisible: the whole app just did nothing.
             NSLog("KyroVoice: failed to register hotkey \(settings.hotkey.displayString)")
             overlayState.phase = .error("\(settings.hotkey.displayString) is already used by another app. KyroVoice can't listen for it.")
-            overlay.show()
             overlay.scheduleHide(after: 8)
         }
     }

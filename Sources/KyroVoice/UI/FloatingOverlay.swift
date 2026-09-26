@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import Combine
 
 /// Borderless, non-activating, top-right floating panel that shows
 /// recording / processing / injected state with a small animated waveform.
@@ -9,10 +10,29 @@ public final class FloatingOverlay {
     private var panel: NSPanel?
     private let state: OverlayState
     private var hideWorkItem: DispatchWorkItem?
+    private var phaseSink: AnyCancellable?
 
     public init(state: OverlayState) {
         self.state = state
+        // The panel follows the phase instead of waiting to be told. Every
+        // "the pebble did not show up" bug was a phase change that no call site
+        // paired with a show(): `stopAndTranscribe` sets `.processing` and
+        // nothing else, so a session that began with the panel down stayed
+        // down for its whole life. One subscription, no call site to forget.
+        phaseSink = state.$phase
+            .removeDuplicates()
+            .sink { [weak self] phase in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if phase == .hidden { self.hide() } else { self.show() }
+                }
+            }
     }
+
+    /// Read by `--overlay-check`.
+    var isPanelVisible: Bool { panel?.isVisible ?? false }
+    var panelFrame: NSRect? { panel?.frame }
+    var panelLevel: Int { panel.map { $0.level.rawValue } ?? .min }
 
     public func show() {
         ensurePanel()
@@ -21,15 +41,29 @@ public final class FloatingOverlay {
         cancelHide()
     }
 
+    /// Builds and draws the panel once, invisibly, at launch. The first show
+    /// otherwise spends ~85 ms creating the panel and SwiftUI host.
+    public func prewarm() {
+        guard panel == nil else { return }
+        ensurePanel()
+        guard let panel else { return }
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        panel.displayIfNeeded()
+        panel.orderOut(nil)
+        panel.alphaValue = 1
+    }
+
     public func hide() {
+        cancelHide()
         panel?.orderOut(nil)
     }
 
     public func scheduleHide(after seconds: TimeInterval) {
         cancelHide()
+        // Setting the phase is enough: the subscription takes the panel down.
         let work = DispatchWorkItem { [weak self] in
             self?.state.phase = .hidden
-            self?.hide()
         }
         hideWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
@@ -71,7 +105,10 @@ public final class FloatingOverlay {
             defer: false
         )
         p.isFloatingPanel = true
-        p.level = .floating
+        // .floating is level 3, below the Dock (20) and the menu bar (24), so
+        // the pebble sits under the Dock the moment a full-screen space hides
+        // it from `visibleFrame` and the user nudges the pointer downwards.
+        p.level = .statusBar
         // .fullScreenAuxiliary allows the panel to appear over fullscreen app spaces.
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         p.hasShadow = true

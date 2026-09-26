@@ -19,6 +19,12 @@ public final class DictationCoordinator: ObservableObject {
     private let overlay: FloatingOverlay
 
     private var transcribeTask: Task<Void, Never>?
+    /// Pending end of a recording: it keeps capturing for `tailCapture` after
+    /// release, so the last word isn't cut off.
+    private var tailTask: Task<Void, Never>?
+    private var releasedAt: ContinuousClock.Instant?
+    /// People tend to release the key while still saying the last word.
+    private static let tailCapture: TimeInterval = 0.15
     private var targetPID: pid_t = 0
     private var cancellables = Set<AnyCancellable>()
 
@@ -65,7 +71,7 @@ public final class DictationCoordinator: ObservableObject {
         case .pushToTalk:
             startRecording()
         case .toggle:
-            if isRecording { stopAndTranscribe() } else { startRecording() }
+            if isRecording, tailTask == nil { stopAndTranscribe() } else { startRecording() }
         }
     }
 
@@ -80,7 +86,7 @@ public final class DictationCoordinator: ObservableObject {
     }
 
     public func userToggle() async {
-        if isRecording { stopAndTranscribe() } else { startRecording() }
+        if isRecording, tailTask == nil { stopAndTranscribe() } else { startRecording() }
     }
 
     public func modelChanged(to variant: ModelVariant) async {
@@ -93,7 +99,19 @@ public final class DictationCoordinator: ObservableObject {
     // MARK: - Pipeline
 
     private func startRecording() {
-        guard !isRecording else { return }
+        if let tail = tailTask {
+            // A press during the previous recording's tail ends that one now,
+            // otherwise the new press would be swallowed. Its transcription
+            // is kept: the user finished speaking it.
+            tail.cancel()
+            tailTask = nil
+            finishRecording()
+        } else {
+            guard !isRecording else { return }
+            // A transcription still running belongs to the previous press. Left
+            // alone it finishes into this session's HUD.
+            transcribeTask?.cancel()
+        }
         // Capture target app PID now — before transcription delay shifts focus.
         targetPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
         NSLog("KyroVoice: target PID=\(targetPID)")
@@ -102,7 +120,6 @@ public final class DictationCoordinator: ObservableObject {
             isRecording = true
             overlayState.resetLevels()
             overlayState.phase = .listening
-            overlay.show()
             NSLog("KyroVoice: recording started — recorderState=\(recorder.state)")
         } catch {
             NSLog("KyroVoice: startRecording failed — \(error.localizedDescription)")
@@ -111,7 +128,30 @@ public final class DictationCoordinator: ObservableObject {
     }
 
     private func stopAndTranscribe() {
+        guard isRecording, tailTask == nil else { return }
+        releasedAt = ContinuousClock.now
+        overlayState.phase = .processing
+        // Stop once the recorder holds audio through release + tail. A fixed
+        // sleep stopped mid-buffer: tap buffers land every ~100 ms and the one
+        // in flight, the end of the last word, was dropped. The deadline
+        // covers a tap that stops delivering.
+        let target = AudioRecorder.hostNow() + Self.tailCapture
+        let deadline = target + 0.2
+        tailTask = Task { [weak self, recorder] in
+            while recorder.capturedThrough() < target, AudioRecorder.hostNow() < deadline {
+                do { try await Task.sleep(for: .milliseconds(10)) } catch { return }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.tailTask = nil
+            self.finishRecording()
+        }
+    }
+
+    private func finishRecording() {
         guard isRecording else { return }
+        let clock = ContinuousClock()
+        let released = releasedAt ?? clock.now
+        let tailDone = clock.now
         let samples = recorder.stop()
         isRecording = false
         NSLog("KyroVoice: stopped — \(samples.count) samples collected")
@@ -119,7 +159,6 @@ public final class DictationCoordinator: ObservableObject {
         guard !samples.isEmpty else {
             NSLog("KyroVoice: no samples, aborting")
             overlayState.phase = .hidden
-            overlay.hide()
             return
         }
 
@@ -127,15 +166,20 @@ public final class DictationCoordinator: ObservableObject {
 
         // Resolve at stop so the user's current frontmost app wins.
         let resolvedMode = modeResolver.resolve(default: settings.mode)
+        // Captured now: a press during transcription overwrites `targetPID`.
+        let target = targetPID
         NSLog("KyroVoice: transcribing — mode=\(resolvedMode)")
 
         transcribeTask?.cancel()
         transcribeTask = Task { [weak self] in
             guard let self else { return }
             do {
+                let transcribeStart = clock.now
                 let raw = try await self.whisper.transcribe(samples: samples)
+                let transcribed = clock.now
                 NSLog("KyroVoice: raw='\(raw)'")
                 let cleaned = self.processor.process(raw, mode: resolvedMode)
+                let processed = clock.now
                 NSLog("KyroVoice: cleaned='\(cleaned)'")
                 guard !Task.isCancelled else { return }
                 guard !cleaned.isEmpty else {
@@ -143,10 +187,11 @@ public final class DictationCoordinator: ObservableObject {
                     self.showError("No speech detected.", durationSeconds: 2.5)
                     return
                 }
-                NSLog("KyroVoice: injecting via \(self.settings.injectionStrategy.rawValue) targetPID=\(self.targetPID)")
-                try await self.injector.inject(cleaned, targetPID: self.targetPID)
+                NSLog("KyroVoice: injecting via \(self.settings.injectionStrategy.rawValue) targetPID=\(target)")
+                try await self.injector.inject(cleaned, targetPID: target)
                 NSLog("KyroVoice: injection succeeded")
-                let appName = NSRunningApplication(processIdentifier: self.targetPID)?.localizedName
+                NSLog("KyroVoice: timing audio=\(samples.count / 16) ms tail=\((tailDone - released).kvMilliseconds) stop=\((transcribeStart - tailDone).kvMilliseconds) speech=\((transcribed - transcribeStart).kvMilliseconds) text=\((processed - transcribed).kvMilliseconds) (paste lands ~30 ms later, see 'paste posted')")
+                let appName = NSRunningApplication(processIdentifier: target)?.localizedName
                 HistoryStore.shared.add(HistoryEntry(
                     id: UUID(),
                     timestamp: Date(),
@@ -154,8 +199,7 @@ public final class DictationCoordinator: ObservableObject {
                     mode: resolvedMode,
                     targetAppName: appName
                 ))
-                self.overlayState.phase = .injected
-                self.overlay.scheduleHide(after: 0.5)
+                self.finish(.injected, hideAfter: 0.5)
             } catch {
                 NSLog("KyroVoice: pipeline error — \(error.localizedDescription)")
                 self.showError(error.localizedDescription, durationSeconds: 3.5)
@@ -164,8 +208,26 @@ public final class DictationCoordinator: ObservableObject {
     }
 
     private func showError(_ message: String, durationSeconds: TimeInterval) {
-        overlayState.phase = .error(message)
-        overlay.show()
-        overlay.scheduleHide(after: durationSeconds)
+        finish(.error(message), hideAfter: durationSeconds)
+    }
+
+    /// Terminal HUD feedback for a dictation that just ended.
+    ///
+    /// A newer recording owns the pebble. Without this guard a slow
+    /// transcription lands `.injected` plus a 0.5 s hide on top of a session
+    /// that is already listening: the pebble vanishes mid-sentence and the rest
+    /// of that dictation runs with the panel ordered out.
+    private func finish(_ phase: OverlayState.Phase, hideAfter seconds: TimeInterval) {
+        guard !isRecording else { return }
+        overlayState.phase = phase
+        overlay.scheduleHide(after: seconds)
+    }
+}
+
+extension Duration {
+    /// Whole milliseconds, for timing logs.
+    var kvMilliseconds: Int64 {
+        let (seconds, attoseconds) = components
+        return seconds * 1000 + attoseconds / 1_000_000_000_000_000
     }
 }

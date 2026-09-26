@@ -47,10 +47,13 @@ public final class AudioRecorder {
 
     public nonisolated static let targetSampleRate: Double = 16_000
 
-    /// ~200 ms at 48 kHz. The documented supported range for a tap is
-    /// [100, 400] ms; the old 4096 (85 ms) was below the floor and silently
-    /// clamped by AVAudioEngine anyway.
-    private static let tapBufferSize: AVAudioFrameCount = 9600
+    /// 100 ms of audio, the floor of the documented [100, 400] ms tap range.
+    /// macOS honours the request, and the buffer in flight when recording stops
+    /// is lost, so a smaller buffer loses less of the last word. Measured: 9600
+    /// frames at 48 kHz arrived every 200 ms.
+    private static func tapBufferSize(for format: AVAudioFormat) -> AVAudioFrameCount {
+        AVAudioFrameCount(format.sampleRate / 10)
+    }
 
     private var engine: AVAudioEngine?
     private var targetFormat: AVAudioFormat?
@@ -63,6 +66,8 @@ public final class AudioRecorder {
     private nonisolated(unsafe) var samples: [Float] = []
     private nonisolated(unsafe) var levelHandler: LevelHandler?
     private nonisolated(unsafe) var converter: AVAudioConverter?
+    /// Host-clock seconds at the end of the newest captured buffer.
+    private nonisolated(unsafe) var capturedEnd: TimeInterval = 0
 
     public init() {}
 
@@ -80,6 +85,17 @@ public final class AudioRecorder {
     private nonisolated func isCapturing() -> Bool {
         lock.lock(); defer { lock.unlock() }
         return capturing
+    }
+
+    /// Host-clock seconds, the clock `capturedThrough()` is measured in.
+    public nonisolated static func hostNow() -> TimeInterval {
+        AVAudioTime.seconds(forHostTime: mach_absolute_time())
+    }
+
+    /// Host time up to which audio has been captured in this recording.
+    public nonisolated func capturedThrough() -> TimeInterval {
+        lock.lock(); defer { lock.unlock() }
+        return capturedEnd
     }
 
     private nonisolated func resetConverter() {
@@ -114,6 +130,20 @@ public final class AudioRecorder {
         state = .ready
     }
 
+    /// Loads the input device's audio unit once, off the main thread, and
+    /// throws the engine away. The first `start()` otherwise pays that cold
+    /// cost on the main thread: measured 335 ms to 3 s on the first press vs
+    /// ~200 ms after. No capture runs, so the mic indicator stays off, and no
+    /// engine is kept alive (see the type comment for why that matters).
+    public nonisolated static func prewarmInputDevice() {
+        Thread.detachNewThread {
+            // Held in a local: `AVAudioEngine().inputNode` frees the engine
+            // before the node is used and crashes.
+            let engine = AVAudioEngine()
+            _ = engine.inputNode.outputFormat(forBus: 0)
+        }
+    }
+
     // MARK: - Capture control
 
     public func start() throws {
@@ -132,6 +162,7 @@ public final class AudioRecorder {
         samples.removeAll(keepingCapacity: true)
         samples.reserveCapacity(Int(Self.targetSampleRate) * 60)
         converter = nil
+        capturedEnd = 0
         capturing = true
         lock.unlock()
 
@@ -185,10 +216,10 @@ public final class AudioRecorder {
             try KVAudioEngineHelper.installTap(
                 on: input,
                 bus: 0,
-                bufferSize: Self.tapBufferSize,
+                bufferSize: Self.tapBufferSize(for: outFmt),
                 format: nil
-            ) { [weak self] buf, _ in
-                self?.convertAndHandle(buf, targetFmt: targetFmt)
+            ) { [weak self] buf, when in
+                self?.convertAndHandle(buf, at: when, targetFmt: targetFmt)
             }
         } catch {
             // The reason string is the entire diagnosis if this ever recurs.
@@ -244,9 +275,9 @@ public final class AudioRecorder {
             do {
                 try KVAudioEngineHelper.start(engine)
                 try KVAudioEngineHelper.installTap(
-                    on: input, bus: 0, bufferSize: Self.tapBufferSize, format: nil
-                ) { [weak self] buf, _ in
-                    self?.convertAndHandle(buf, targetFmt: targetFmt)
+                    on: input, bus: 0, bufferSize: Self.tapBufferSize(for: outFmt), format: nil
+                ) { [weak self] buf, when in
+                    self?.convertAndHandle(buf, at: when, targetFmt: targetFmt)
                 }
             } catch {
                 NSLog("KyroVoice: audio reconfigure failed: \(error.localizedDescription)")
@@ -257,6 +288,7 @@ public final class AudioRecorder {
     // MARK: - Conversion
 
     private nonisolated func convertAndHandle(_ buffer: AVAudioPCMBuffer,
+                                              at when: AVAudioTime,
                                               targetFmt: AVAudioFormat) {
         // The converter is built from the format the buffers actually arrive
         // in, and rebuilt if that format changes under a live tap. Allocating
@@ -279,12 +311,15 @@ public final class AudioRecorder {
             fed = true; flag.pointee = .haveData; return buffer
         }
         guard status != .error else { return }
-        handleInputBuffer(out)
+        let end = when.isHostTimeValid
+            ? AVAudioTime.seconds(forHostTime: when.hostTime) + Double(buffer.frameLength) / buffer.format.sampleRate
+            : Self.hostNow()
+        handleInputBuffer(out, end: end)
     }
 
     // MARK: - Buffer handler
 
-    private nonisolated func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
+    private nonisolated func handleInputBuffer(_ buffer: AVAudioPCMBuffer, end: TimeInterval) {
         // Buffers arrive already in targetFormat (16 kHz mono Float32).
         let rms = Self.rms(of: buffer)
 
@@ -307,6 +342,7 @@ public final class AudioRecorder {
         if samples.count < Int(Self.targetSampleRate) * 600 {
             samples.append(contentsOf: UnsafeBufferPointer(start: channelPtr, count: count))
         }
+        capturedEnd = end
         lock.unlock()
     }
 

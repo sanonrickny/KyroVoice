@@ -94,6 +94,15 @@ enum SpeechEngineSelfCheck {
             actually runs instead of being skipped entirely by a short clip.
             """)
 
+        // Under FluidAudio's 0.3 s floor: must transcribe, not throw.
+        do {
+            _ = try await engine.transcribe(samples: (0..<3_200).map { _ in Float.random(in: -0.01...0.01) })
+            print("ok   0.2s clip accepted")
+        } catch {
+            failures += 1
+            print("FAIL 0.2s clip threw: \(error.localizedDescription)")
+        }
+
         // Silence must be rejected, not injected as empty text.
         do {
             _ = try await engine.transcribe(samples: [Float](repeating: 0, count: 16_000))

@@ -13,7 +13,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md); end-user behaviour in
 | Language | Swift 5.9, SwiftPM (`swift-tools-version:5.9`) |
 | Target | `arm64` release only. No debug scheme, no test target, no CI. |
 | Platform | macOS 14 (FluidAudio's floor) |
-| Dependency | [FluidAudio](https://github.com/FluidInference/FluidAudio) ≥ 0.15.5, Apache 2.0, no transitive deps |
+| Dependency | [FluidAudio](https://github.com/FluidInference/FluidAudio) ≥ 0.15.7 (NeMo trait disabled), Apache 2.0, no transitive deps |
 | Extra target | `KyroVoiceObjC`, a ~90-line Objective-C shim |
 
 There is no Xcode project. `swift build` plus a shell script that assembles the

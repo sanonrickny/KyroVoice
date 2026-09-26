@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.1
 import PackageDescription
 
 let package = Package(
@@ -8,7 +8,8 @@ let package = Package(
         .executable(name: "KyroVoice", targets: ["KyroVoice"])
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.5")
+        // No NeMo text normalizer: it only serves TTS, and Parakeet does its own ITN.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.7", traits: [])
     ],
     targets: [
         .target(
@@ -24,5 +25,6 @@ let package = Package(
             ],
             path: "Sources/KyroVoice"
         )
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )

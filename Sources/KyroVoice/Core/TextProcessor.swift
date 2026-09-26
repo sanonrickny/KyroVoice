@@ -2,6 +2,17 @@ import Foundation
 
 // MARK: - Public API
 
+/// Every pattern here is fixed, so each is compiled once. The rules used to
+/// rebuild about 100 regexes on every dictation.
+private let regexCache = NSCache<NSString, NSRegularExpression>()
+
+func cachedRegex(_ pattern: String) -> NSRegularExpression? {
+    if let hit = regexCache.object(forKey: pattern as NSString) { return hit }
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+    regexCache.setObject(regex, forKey: pattern as NSString)
+    return regex
+}
+
 public protocol TextRule {
     func apply(_ s: String) -> String
 }
@@ -9,8 +20,16 @@ public protocol TextRule {
 /// Deterministic, offline-first text cleanup. Mode-gated rule pipeline.
 public final class TextProcessor {
     private let pipelines: [DictationMode: [TextRule]]
+    private let replacements: ReplacementRule?
 
-    public init() {
+    /// The user's "heard => written" list, for names and jargon the model
+    /// mishears. Edited from the menu bar.
+    public static let replacementsURL = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("KyroVoice/replacements.txt")
+
+    public init(replacementsURL: URL? = nil) {
+        self.replacements = replacementsURL.map(ReplacementRule.init(url:))
         let prelude: [TextRule] = [
             UnicodeNormalizer(),
             WhitespaceNormalizer()
@@ -44,7 +63,36 @@ public final class TextProcessor {
         let rules = pipelines[mode] ?? []
         var s = raw
         for rule in rules { s = rule.apply(s) }
+        // Last, so the written form's casing ("iPhone") survives the rules.
+        if let replacements { s = replacements.apply(s) }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Rules: user replacements
+
+/// Applies "heard => written" lines, whole-word and case-insensitive. Lines
+/// starting with # are comments. Read on every dictation, so an edit applies
+/// without a restart; the file is a few lines.
+struct ReplacementRule: TextRule {
+    let url: URL
+
+    func apply(_ s: String) -> String {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return s }
+        var out = s
+        for line in text.split(whereSeparator: \.isNewline) where !line.hasPrefix("#") {
+            let parts = line.components(separatedBy: "=>")
+            guard parts.count == 2 else { continue }
+            let heard = parts[0].trimmingCharacters(in: .whitespaces)
+            let written = parts[1].trimmingCharacters(in: .whitespaces)
+            let pattern = "(?i)(?<!\\w)\(NSRegularExpression.escapedPattern(for: heard))(?!\\w)"
+            guard !heard.isEmpty, let regex = cachedRegex(pattern) else { continue }
+            out = regex.stringByReplacingMatches(
+                in: out, range: NSRange(out.startIndex..<out.endIndex, in: out),
+                withTemplate: NSRegularExpression.escapedTemplate(for: written)
+            )
+        }
+        return out
     }
 }
 
@@ -102,7 +150,7 @@ struct FillerStripper: TextRule {
         // otherwise "Ah, the sunset" left an orphan ", the sunset".
         let escaped = NSRegularExpression.escapedPattern(for: phrase)
         let pattern = "(?i)(^|\\s|,)(\(escaped)),?(?=[\\s.!?;]|$)"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return input }
+        guard let regex = cachedRegex(pattern) else { return input }
         let range = NSRange(input.startIndex..<input.endIndex, in: input)
         return regex.stringByReplacingMatches(
             in: input, range: range, withTemplate: "$1"
@@ -114,7 +162,7 @@ struct PunctuationSpacer: TextRule {
     func apply(_ s: String) -> String {
         var out = s
         // Remove space before terminal punctuation.
-        if let r = try? NSRegularExpression(pattern: "\\s+([\\.,;:!?])") {
+        if let r = cachedRegex("\\s+([\\.,;:!?])") {
             out = r.stringByReplacingMatches(
                 in: out,
                 range: NSRange(out.startIndex..<out.endIndex, in: out),
@@ -129,7 +177,7 @@ struct PunctuationSpacer: TextRule {
         // sentence period, and there is no reliable way to tell them apart.
         // The old unguarded rule turned "version 3.5 at 9:30" into
         // "version 3. 5 at 9: 30".
-        if let r = try? NSRegularExpression(pattern: "(?<!\\d)([,;:!?])(?!\\d)([^\\s\\.,;:!?\\)\\]\\}\"'])") {
+        if let r = cachedRegex("(?<!\\d)([,;:!?])(?!\\d)([^\\s\\.,;:!?\\)\\]\\}\"'])") {
             out = r.stringByReplacingMatches(
                 in: out,
                 range: NSRange(out.startIndex..<out.endIndex, in: out),
@@ -178,7 +226,7 @@ struct SentenceCapitalizer: TextRule {
         }
         // "i" → "I" as a word.
         var out = built
-        if let r = try? NSRegularExpression(pattern: "\\bi\\b") {
+        if let r = cachedRegex("\\bi\\b") {
             out = r.stringByReplacingMatches(
                 in: out,
                 range: NSRange(out.startIndex..<out.endIndex, in: out),
@@ -211,7 +259,7 @@ struct ContractionExpander: TextRule {
         var out = s
         for (from, to) in Self.map {
             let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: from))\\b"
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            guard let regex = cachedRegex(pattern) else { continue }
             let range = NSRange(out.startIndex..<out.endIndex, in: out)
             out = regex.stringByReplacingMatches(in: out, range: range, withTemplate: to)
         }
@@ -227,7 +275,7 @@ struct SmallNumberSpeller: TextRule {
     func apply(_ s: String) -> String {
         // Not inside a decimal, time or version string: "room 3.5" must not
         // become "room three.five", "9:30" must not become "nine:30".
-        guard let regex = try? NSRegularExpression(pattern: "(?<![\\d.:])\\b(\\d{1,2})\\b(?![\\d.:])") else { return s }
+        guard let regex = cachedRegex("(?<![\\d.:])\\b(\\d{1,2})\\b(?![\\d.:])") else { return s }
         let ns = s as NSString
         var result = ""
         var cursor = 0
@@ -286,16 +334,18 @@ struct SpokenSyntaxRule: TextRule {
         ("single quote",     "'"),  ("double quote",     "\"")
     ]
 
+    // Sort longest-first rather than trusting the literal order of the map.
+    // The map claimed "longer phrases first" but violated it: "equals"
+    // preceded "plus equals" and "pipe" preceded "double pipe", so
+    // "x plus equals one" became "x plus = one" and "a double pipe b"
+    // became "a double | b". Sorting here can't drift out of sync.
+    private static let sortedMap = map.sorted(by: { $0.0.count > $1.0.count })
+
     func apply(_ s: String) -> String {
         var working = s
-        // Sort longest-first rather than trusting the literal order of the map.
-        // The map claimed "longer phrases first" but violated it: "equals"
-        // preceded "plus equals" and "pipe" preceded "double pipe", so
-        // "x plus equals one" became "x plus = one" and "a double pipe b"
-        // became "a double | b". Sorting here can't drift out of sync.
-        for (phrase, symbol) in Self.map.sorted(by: { $0.0.count > $1.0.count }) {
+        for (phrase, symbol) in Self.sortedMap {
             let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: phrase))\\b"
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            guard let regex = cachedRegex(pattern) else { continue }
             let range = NSRange(working.startIndex..<working.endIndex, in: working)
             // Insert the literal symbol; spacing fixed by CodeSymbolSpacing.
             // The symbol must be escaped as a *template*: "$" and "\" are
@@ -331,7 +381,7 @@ struct CaseConverter: TextRule {
 
     private func applyOne(phrase: String, style: Style, in input: String) -> String {
         let pattern = "(?i)\\b\(NSRegularExpression.escapedPattern(for: phrase))\\b\\s+([A-Za-z][A-Za-z\\s]*?)(?=[\\.,;:!?\\(\\)\\[\\]\\{\\}\\n]|$)"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return input }
+        guard let regex = cachedRegex(pattern) else { return input }
         let ns = input as NSString
         var result = ""
         var cursor = 0
@@ -378,7 +428,7 @@ struct CodeSymbolSpacing: TextRule {
             (" {2,}", " ")                   // collapse double spaces
         ]
         for (pat, tmpl) in patterns {
-            guard let r = try? NSRegularExpression(pattern: pat) else { continue }
+            guard let r = cachedRegex(pat) else { continue }
             let range = NSRange(out.startIndex..<out.endIndex, in: out)
             out = r.stringByReplacingMatches(in: out, range: range, withTemplate: tmpl)
         }

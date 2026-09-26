@@ -162,6 +162,14 @@ public final class MenuBarController {
         historyItem.target = self
         menu.addItem(historyItem)
 
+        let replacementsItem = NSMenuItem(
+            title: "Word Replacements…",
+            action: #selector(openReplacements),
+            keyEquivalent: ""
+        )
+        replacementsItem.target = self
+        menu.addItem(replacementsItem)
+
         // Settings
         let settingsItem = NSMenuItem(
             title: "Settings…",
@@ -208,6 +216,23 @@ public final class MenuBarController {
 
     @objc private func openHistory() {
         HistoryWindow.shared.show()
+    }
+
+    /// ponytail: a text file in the default editor, not a settings table. Add
+    /// UI if people other than Rick end up editing it.
+    @objc private func openReplacements() {
+        let url = TextProcessor.replacementsURL
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? """
+            # One per line: what the model writes => what you want typed.
+            # Whole words, case-insensitive. Saved edits apply on the next dictation.
+            # kyro voice => KyroVoice
+
+            """.write(to: url, atomically: true, encoding: .utf8)
+        }
+        NSWorkspace.shared.open(url)
     }
 
     @objc private func openSettings() {
