@@ -23,6 +23,11 @@ public final class DictationCoordinator: ObservableObject {
     /// release, so the last word isn't cut off.
     private var tailTask: Task<Void, Never>?
     private var releasedAt: ContinuousClock.Instant?
+    private var pressedAt: ContinuousClock.Instant?
+    /// A push-to-talk press shorter than this is a slip of the hotkey: the
+    /// first tap buffer only arrives ~220 ms after the press, so there is no
+    /// speech to transcribe and the user would just see "No speech detected".
+    private static let minimumHold: Duration = .milliseconds(200)
     /// People tend to release the key while still saying the last word.
     private static let tailCapture: TimeInterval = 0.15
     private var targetPID: pid_t = 0
@@ -79,7 +84,15 @@ public final class DictationCoordinator: ObservableObject {
         NSLog("KyroVoice: hotkeyReleased — isRecording=\(isRecording)")
         switch settings.hotkeyMode {
         case .pushToTalk:
-            if isRecording { stopAndTranscribe() }
+            guard isRecording else { return }
+            if tailTask == nil, let pressedAt, ContinuousClock.now - pressedAt < Self.minimumHold {
+                NSLog("KyroVoice: press too short, discarding")
+                _ = recorder.stop()
+                isRecording = false
+                overlayState.phase = .hidden
+            } else {
+                stopAndTranscribe()
+            }
         case .toggle:
             break
         }
@@ -118,6 +131,7 @@ public final class DictationCoordinator: ObservableObject {
         do {
             try recorder.start()
             isRecording = true
+            pressedAt = ContinuousClock.now
             overlayState.resetLevels()
             overlayState.phase = .listening
             NSLog("KyroVoice: recording started — recorderState=\(recorder.state)")

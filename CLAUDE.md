@@ -80,7 +80,7 @@ Dependency: `FluidAudio` from `https://github.com/FluidInference/FluidAudio` (�
 
 `DictationMode` has three values (`normal`, `email`, `code`). `ModeResolver` selects the mode automatically from the frontmost app's bundle ID (VS Code, Xcode, iTerm → `.code`; Mail, Outlook → `.email`; otherwise the user's default). `TextProcessor` runs a deterministic rule pipeline per mode:
 
-- **normal**: unicode normalization → whitespace normalization → filler stripping → punctuation spacing → sentence capitalization
+- **normal**: unicode normalization → whitespace normalization → filler stripping → repeat collapsing ("the the" → "the") → punctuation spacing → sentence capitalization
 - **email**: normal + contraction expansion + small number spelling
 - **code**: unicode + whitespace + spoken-syntax expansion (`"open paren"` → `(`) + case conversion (`"camel case foo bar"` → `fooBar`) + symbol spacing
 

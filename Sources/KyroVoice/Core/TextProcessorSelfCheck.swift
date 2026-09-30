@@ -40,6 +40,21 @@ enum TextProcessorSelfCheck {
         expect("um the build is green", .normal, "The build is green", "um stripped")
         expect("Ah, the sunset was nice", .normal, "The sunset was nice", "ah plus comma stripped")
 
+        // Stutters and restarts, all from real dictation history.
+        expect("Okay, so I need to to graduate, right", .normal, "Okay, so I need to graduate, right", "doubled word")
+        expect("and also and also it should", .normal, "And also it should", "doubled phrase")
+        expect("Wait, so what what do I do here?", .normal, "Wait, so what do I do here?", "doubled question word")
+        expect("What do they need, what do they need?", .normal, "What do they need?", "comma-separated restart")
+        expect("improve the the the the app itself", .normal, "Improve the app itself", "stutter run")
+        // ...but real repeats stay.
+        expect("I know that that is true", .normal, "I know that that is true", "that that is grammar")
+        expect("Yes, yes, continue.", .normal, "Yes, yes, continue.", "comma-separated single word is emphasis")
+        expect("it was very very good", .normal, "It was very very good", "intensifier kept")
+        expect("call 9 1 1 now", .normal, "Call 9 1 1 now", "digits never collapse")
+        expect("what about this one, this one will fit", .normal, "What about this one, this one will fit", "short comma repeat can be two clauses")
+        expect("a twenty twenty one Mazda", .normal, "A twenty twenty one Mazda", "number words are years")
+        expect("this is his", .normal, "This is his", "partial word is not a repeat")
+
         // Code mode: longest-phrase-first and template escaping.
         expect("x plus equals one", .code, "x += one", "plus equals beats equals")
         expect("y minus equals two", .code, "y -= two", "minus equals beats equals")

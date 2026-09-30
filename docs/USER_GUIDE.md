@@ -111,7 +111,7 @@ Modes change how the transcript is cleaned up before insertion.
 
 | Mode | Does |
 |---|---|
-| **Normal** | Strips "uh"/"um" filler, fixes spacing around punctuation, capitalizes sentences. |
+| **Normal** | Strips "uh"/"um" filler and stutters ("to to", "and also and also"), fixes spacing around punctuation, capitalizes sentences. |
 | **Email** | Normal, plus expands contractions ("don't" → "do not") and spells out small numbers ("3 items" → "three items"). |
 | **Code** | Turns spoken syntax into symbols, handles naming conventions, tightens spacing. No capitalization, no filler stripping. |
 

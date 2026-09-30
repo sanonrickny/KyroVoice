@@ -318,12 +318,14 @@ flowchart TB
     WS --> SW{mode}
 
     SW -->|normal| N1[FillerStripper]
-    N1 --> N2[PunctuationSpacer]
+    N1 --> NR[RepeatCollapser]
+    NR --> N2[PunctuationSpacer]
     N2 --> N3[SentenceCapitalizer]
     N3 --> OUT([trimmed output])
 
     SW -->|email| E0[FillerStripper]
-    E0 --> E1[PunctuationSpacer]
+    E0 --> ER[RepeatCollapser]
+    ER --> E1[PunctuationSpacer]
     E1 --> E2[SentenceCapitalizer]
     E2 --> E3[ContractionExpander]
     E3 --> E4[SmallNumberSpeller]
@@ -350,6 +352,7 @@ Each of these is guarded by a case in `--self-check`:
 | `PunctuationSpacer` | digits guarded on both sides, periods excluded | `version 3.5 at 9:30` → `version 3. 5 at 9: 30`. |
 | `SmallNumberSpeller` | negative lookaround on `. :` | `room 3.5` → `room three.five`. |
 | `FillerStripper` | pure vocalisations only | `I actually finished it` → `I finished it`; `what kind of car` → `what car`. Telling filler from content needs real parsing. |
+| `RepeatCollapser` | keep list, letters only, 3+ words across a comma | `I know that that is true` → `I know that is true`; `twenty twenty one` → `twenty one`; `this one, this one will fit` lost a clause. |
 | `SpokenSyntaxRule` | sorted longest-phrase-first at runtime | `x plus equals one` → `x plus = one`, `a double pipe b` → `a double \| b`. |
 | `SpokenSyntaxRule` | `escapedTemplate(for:)` | `$` and `\` are regex *template* metacharacters, so "back slash" vanished entirely. |
 

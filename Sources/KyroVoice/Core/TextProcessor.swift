@@ -37,6 +37,8 @@ public final class TextProcessor {
 
         let normal: [TextRule] = prelude + [
             FillerStripper(),
+            // After filler stripping, which can leave "the um the" as "the the".
+            RepeatCollapser(),
             PunctuationSpacer(),
             SentenceCapitalizer()
         ]
@@ -155,6 +157,51 @@ struct FillerStripper: TextRule {
         return regex.stringByReplacingMatches(
             in: input, range: range, withTemplate: "$1"
         )
+    }
+}
+
+/// Collapses stutters and restarts of up to 4 words: "to to" -> "to", "the the the" -> "the",
+/// "and also and also" -> "and also", "what do they need, what do they
+/// need?" -> "what do they need?". Parakeet transcribes these faithfully and
+/// they made up about 1 in 8 real dictations.
+///
+/// Single words only collapse when directly adjacent and not in `keep`, where
+/// the double is usually grammar or emphasis ("I know that that is true",
+/// "very very good"). A comma between single words ("yes, yes") is read as
+/// emphasis too. Words must start with a letter, so "9 1 1" is safe.
+struct RepeatCollapser: TextRule {
+    private static let keep: Set<String> = [
+        "that", "had", "is", "very", "really", "so", "no", "bye", "ha", "go", "knock",
+        "plus",  // "c plus plus", "i plus plus"
+        // Spoken years and numbers: "twenty twenty one".
+        "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+        "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty",
+        "seventy", "eighty", "ninety", "hundred", "thousand", "oh"
+    ]
+    private static let word = "\\p{L}[\\p{L}']*"
+    private static let edge = "(?![\\p{L}\\p{N}'])"
+    private static let start = "(?<![\\p{L}\\p{N}'])"
+
+    func apply(_ s: String) -> String {
+        // Across a comma, only 3+ words: "this one, this one will fit" is two
+        // clauses, "what do they need, what do they need" is a restart.
+        let restart = "(?i)\(Self.start)(\(Self.word)(?:\\s+\(Self.word)){2,3})(?:,?\\s+\\1\(Self.edge))+"
+        let phrase = "(?i)\(Self.start)(\(Self.word)(?:\\s+\(Self.word)){1,3})(?:\\s+\\1\(Self.edge))+"
+        let single = "(?i)\(Self.start)(\(Self.word))(?:\\s+\\1\(Self.edge))+"
+        return collapse(single, in: collapse(phrase, in: collapse(restart, in: s)))
+    }
+
+    private func collapse(_ pattern: String, in input: String) -> String {
+        guard let regex = cachedRegex(pattern) else { return input }
+        let out = NSMutableString(string: input)
+        let matches = regex.matches(in: input, range: NSRange(location: 0, length: out.length))
+        for m in matches.reversed() {
+            let first = out.substring(with: m.range(at: 1))
+            if Self.keep.contains(first.lowercased()) { continue }
+            out.replaceCharacters(in: m.range, with: first)
+        }
+        return out as String
     }
 }
 
