@@ -35,8 +35,15 @@ public enum AudioRecorderError: Error, LocalizedError {
 /// supported way to refresh; once sleep/wake, a Bluetooth switch or a
 /// `coreaudiod` restart invalidates them, `installTapOnBus:` raises an
 /// NSException on every subsequent attempt and the process aborts. That is
-/// exactly the multi-day-uptime crash this app was dying from. Engine
-/// construction costs ~10-50 ms, hidden under hotkey-down latency.
+/// exactly the multi-day-uptime crash this app was dying from.
+///
+/// A cold start loses the start of speech: measured on the built-in mic, the
+/// first sample lands 90-150 ms after the press and the next ~140 ms are
+/// silence while the mic powers up, so "Use sub-agents" came out as "So
+/// agents". With `keepReady` the engine instead stays running between
+/// recordings and the last `preRoll` seconds before the press are kept. That
+/// engine is still disposable: it is dropped on sleep and on any configuration
+/// change and rebuilt fresh, never reused, so the crash above cannot recur.
 @MainActor
 public final class AudioRecorder {
     public typealias LevelHandler = @Sendable (Float) -> Void
@@ -46,6 +53,18 @@ public final class AudioRecorder {
     public private(set) var state: State = .idle
 
     public nonisolated static let targetSampleRate: Double = 16_000
+
+    /// Audio kept from before the press, so a word started together with the
+    /// hotkey is whole.
+    public nonisolated static let preRoll: TimeInterval = 0.4
+
+    /// Keep the microphone running between recordings so a press starts
+    /// capturing instantly, with `preRoll` of audio from before it. Turns the
+    /// system microphone indicator on while idle. Ignored for Bluetooth input:
+    /// holding a headset mic open drops its playback to call quality.
+    public var keepReady = false {
+        didSet { refreshStandby() }
+    }
 
     /// 100 ms of audio, the floor of the documented [100, 400] ms tap range.
     /// macOS honours the request, and the buffer in flight when recording stops
@@ -68,6 +87,8 @@ public final class AudioRecorder {
     private nonisolated(unsafe) var converter: AVAudioConverter?
     /// Host-clock seconds at the end of the newest captured buffer.
     private nonisolated(unsafe) var capturedEnd: TimeInterval = 0
+    /// Host-clock seconds of the first captured sample in this recording.
+    private nonisolated(unsafe) var capturedStart: TimeInterval = 0
 
     public init() {}
 
@@ -96,6 +117,12 @@ public final class AudioRecorder {
     public nonisolated func capturedThrough() -> TimeInterval {
         lock.lock(); defer { lock.unlock() }
         return capturedEnd
+    }
+
+    /// Host time of the first sample in this recording, 0 before any audio.
+    public nonisolated func capturedFrom() -> TimeInterval {
+        lock.lock(); defer { lock.unlock() }
+        return capturedStart
     }
 
     private nonisolated func resetConverter() {
@@ -128,6 +155,61 @@ public final class AudioRecorder {
         }
         targetFormat = target
         state = .ready
+        refreshStandby()
+    }
+
+    // MARK: - Standby
+
+    /// Starts or stops the idle engine to match `keepReady` and the current
+    /// input device. Never touches a recording in progress.
+    public func refreshStandby() {
+        guard state == .ready, let targetFmt = targetFormat else { return }
+        if keepReady, !Self.defaultInputIsBluetooth() {
+            guard engine == nil else { return }
+            do {
+                try startEngine(targetFmt: targetFmt)
+                NSLog("KyroVoice: microphone standby on")
+            } catch {
+                // Not fatal: start() falls back to a cold engine per press.
+                NSLog("KyroVoice: standby failed, presses will cold-start: \(error.localizedDescription)")
+                teardownEngine()
+            }
+        } else if engine != nil {
+            teardownEngine()
+            NSLog("KyroVoice: microphone standby off")
+        }
+    }
+
+    /// Drops the idle engine before sleep. Wake brings back a new device
+    /// state, which a pre-sleep engine would carry stale.
+    public func suspendStandby() {
+        guard state == .ready else { return }
+        teardownEngine()
+    }
+
+    /// The standby engine is usable if a buffer arrived recently. A stalled
+    /// tap (device unplugged with no notification) fails this and the press
+    /// rebuilds from scratch.
+    private func standbyIsLive() -> Bool {
+        engine != nil && Self.hostNow() - capturedThrough() < 0.5
+    }
+
+    private nonisolated static func defaultInputIsBluetooth() -> Bool {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &device) == noErr
+        else { return false }
+        var transport = UInt32(0)
+        size = UInt32(MemoryLayout<UInt32>.size)
+        addr.mSelector = kAudioDevicePropertyTransportType
+        guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &transport) == noErr
+        else { return false }
+        return transport == kAudioDeviceTransportTypeBluetooth
+            || transport == kAudioDeviceTransportTypeBluetoothLE
     }
 
     /// Loads the input device's audio unit once, off the main thread, and
@@ -158,16 +240,29 @@ public final class AudioRecorder {
         // "still initialising" is truer than "format unavailable".
         guard let targetFmt = targetFormat else { throw AudioRecorderError.notReady }
 
+        if standbyIsLive() {
+            // The ring already holds the pre-roll: keep it and start appending.
+            lock.lock()
+            capturedStart = capturedEnd - Double(samples.count) / Self.targetSampleRate
+            capturing = true
+            lock.unlock()
+            state = .recording
+            return
+        }
+
+        // Cold path: standby is off, Bluetooth, or its engine stalled.
+        teardownEngine()
         lock.lock()
         samples.removeAll(keepingCapacity: true)
         samples.reserveCapacity(Int(Self.targetSampleRate) * 60)
         converter = nil
         capturedEnd = 0
+        capturedStart = 0
         capturing = true
         lock.unlock()
 
         do {
-            try beginCapture(targetFmt: targetFmt)
+            try startEngine(targetFmt: targetFmt)
         } catch {
             lock.lock(); capturing = false; lock.unlock()
             teardownEngine()
@@ -177,13 +272,13 @@ public final class AudioRecorder {
         state = .recording
     }
 
-    private func beginCapture(targetFmt: AVAudioFormat) throws {
+    private func startEngine(targetFmt: AVAudioFormat) throws {
         let engine = AVAudioEngine()
         self.engine = engine
 
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleConfigChange),
+            selector: #selector(handleConfigChange(_:)),
             name: .AVAudioEngineConfigurationChange,
             object: engine
         )
@@ -233,13 +328,15 @@ public final class AudioRecorder {
         lock.lock()
         capturing = false
         let captured = samples
+        // Cleared, not kept as pre-roll: the next press must not replay the
+        // end of this dictation.
         samples.removeAll(keepingCapacity: true)
-        converter = nil
         lock.unlock()
 
-        teardownEngine()
-
         if state == .recording { state = .ready }
+        // A cold-started engine becomes the standby one, if standby is wanted.
+        if !keepReady || Self.defaultInputIsBluetooth() { teardownEngine() }
+        refreshStandby()
         return captured
     }
 
@@ -251,36 +348,31 @@ public final class AudioRecorder {
         KVAudioEngineHelper.removeTap(on: engine.inputNode, bus: 0)
         engine.stop()
         self.engine = nil
+        resetConverter()
     }
 
-    @objc private nonisolated func handleConfigChange() {
+    @objc private nonisolated func handleConfigChange(_ note: Notification) {
         // AVAudioEngineConfigurationChange arrives on an arbitrary thread, and
         // the engine must not be deallocated inside the handler. Hopping to the
         // main actor satisfies both.
+        let changed = note.object as AnyObject?
         Task { @MainActor [weak self] in
-            guard let self, self.isCapturing(),
-                  let engine = self.engine,
+            // A notification from an engine already replaced is stale.
+            guard let self, let engine = self.engine, engine === changed,
                   let targetFmt = self.targetFormat else { return }
 
-            KVAudioEngineHelper.removeTap(on: engine.inputNode, bus: 0)
-            engine.stop()
-            self.resetConverter()
-
-            let input = engine.inputNode
-            let outFmt = input.outputFormat(forBus: 0)
-            guard outFmt.sampleRate > 0, outFmt.channelCount > 0 else {
-                NSLog("KyroVoice: input device gone after config change")
+            // Rebuild rather than restart: a restarted engine keeps the stale
+            // device state that made installTapOnBus: throw.
+            self.teardownEngine()
+            guard self.isCapturing() else {
+                self.refreshStandby()  // also re-checks for a Bluetooth device
                 return
             }
             do {
-                try KVAudioEngineHelper.start(engine)
-                try KVAudioEngineHelper.installTap(
-                    on: input, bus: 0, bufferSize: Self.tapBufferSize(for: outFmt), format: nil
-                ) { [weak self] buf, when in
-                    self?.convertAndHandle(buf, at: when, targetFmt: targetFmt)
-                }
+                try self.startEngine(targetFmt: targetFmt)
             } catch {
                 NSLog("KyroVoice: audio reconfigure failed: \(error.localizedDescription)")
+                self.teardownEngine()
             }
         }
     }
@@ -324,15 +416,13 @@ public final class AudioRecorder {
         let rms = Self.rms(of: buffer)
 
         lock.lock()
-        let handler = levelHandler
-        let isCapturing = capturing
+        let handler = capturing ? levelHandler : nil
         lock.unlock()
         // Called outside the lock: the handler hops to the main actor and must
         // never run with the audio thread's lock held.
         handler?(rms)
 
-        guard isCapturing,
-              let channelPtr = buffer.floatChannelData?[0] else { return }
+        guard let channelPtr = buffer.floatChannelData?[0] else { return }
         let count = Int(buffer.frameLength)
         guard count > 0 else { return }
 
@@ -342,6 +432,14 @@ public final class AudioRecorder {
         if samples.count < Int(Self.targetSampleRate) * 600 {
             samples.append(contentsOf: UnsafeBufferPointer(start: channelPtr, count: count))
         }
+        if !capturing {
+            // Standby: keep only the pre-roll.
+            // ponytail: removeFirst shifts ~8k floats per 100 ms buffer; a real
+            // ring buffer if preRoll ever grows to seconds.
+            let excess = samples.count - Int(Self.preRoll * Self.targetSampleRate)
+            if excess > 0 { samples.removeFirst(excess) }
+        }
+        if capturedStart == 0 { capturedStart = end - Double(count) / Self.targetSampleRate }
         capturedEnd = end
         lock.unlock()
     }

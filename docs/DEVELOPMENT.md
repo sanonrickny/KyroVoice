@@ -120,12 +120,18 @@ Sources/KyroVoiceObjC/
 
 ## 5. Self-checks
 
-There is no test target. Two runnable checks live behind CLI flags, and both
-exit the process rather than starting the UI.
+There is no test target. Runnable checks live behind CLI flags, and all of
+them exit the process rather than starting the UI.
 
 ```bash
 ./.build/release/KyroVoice --self-check     # instant, offline: TextProcessor rules
 ./.build/release/KyroVoice --speech-check   # end-to-end, downloads the model on first run
+
+# Mic capture: pre-roll at the press, default-input switches. --audible also
+# plays speech from the MacBook speakers at the press and runs it through the
+# whole pipeline, cold vs standby. Needs the bundle's mic grant.
+open -n -W --stdout /tmp/capture.out --stderr /tmp/capture.out \
+    -a .build/KyroVoice.app --args --capture-check [--audible]; cat /tmp/capture.out
 ```
 
 `--self-check` asserts the text pipeline. **Every case in it is a bug that
@@ -273,8 +279,10 @@ ever recurs.
 These are all load-bearing. Each one has a comment in the source explaining the
 bug it prevents.
 
-1. **Build a fresh `AVAudioEngine` per recording.** Reusing one caches a stale
-   aggregate device and crashes after sleep/wake or a device switch.
+1. **Never restart an `AVAudioEngine` in place.** Reusing one caches a stale
+   aggregate device and crashes after sleep/wake or a device switch. The
+   standby engine is torn down before sleep and on every configuration change,
+   and a new one is built.
 2. **All `installTapOnBus` / `startAndReturnError` calls go through
    `KVAudioEngineHelper`.** Swift cannot catch `NSException`; an exception
    unwinding through a Swift frame aborts the process.

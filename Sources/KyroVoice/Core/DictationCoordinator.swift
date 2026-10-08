@@ -17,6 +17,7 @@ public final class DictationCoordinator: ObservableObject {
     private let modeResolver: ModeResolver
     private let overlayState: OverlayState
     private let overlay: FloatingOverlay
+    private let history: HistoryStore
 
     private var transcribeTask: Task<Void, Never>?
     /// Pending end of a recording: it keeps capturing for `tailCapture` after
@@ -24,9 +25,8 @@ public final class DictationCoordinator: ObservableObject {
     private var tailTask: Task<Void, Never>?
     private var releasedAt: ContinuousClock.Instant?
     private var pressedAt: ContinuousClock.Instant?
-    /// A push-to-talk press shorter than this is a slip of the hotkey: the
-    /// first tap buffer only arrives ~220 ms after the press, so there is no
-    /// speech to transcribe and the user would just see "No speech detected".
+    /// A push-to-talk press shorter than this is a slip of the hotkey: too
+    /// short for a word, so the user would just see "No speech detected".
     private static let minimumHold: Duration = .milliseconds(200)
     /// People tend to release the key while still saying the last word.
     private static let tailCapture: TimeInterval = 0.15
@@ -41,7 +41,8 @@ public final class DictationCoordinator: ObservableObject {
         injector: ClipboardInjector,
         modeResolver: ModeResolver,
         overlayState: OverlayState,
-        overlay: FloatingOverlay
+        overlay: FloatingOverlay,
+        history: HistoryStore = .shared
     ) {
         self.settings     = settings
         self.recorder     = recorder
@@ -51,6 +52,7 @@ public final class DictationCoordinator: ObservableObject {
         self.modeResolver = modeResolver
         self.overlayState = overlayState
         self.overlay      = overlay
+        self.history      = history
 
         recorder.setLevelHandler { [weak overlayState] rms in
             Task { @MainActor in
@@ -206,7 +208,7 @@ public final class DictationCoordinator: ObservableObject {
                 NSLog("KyroVoice: injection succeeded")
                 NSLog("KyroVoice: timing audio=\(samples.count / 16) ms tail=\((tailDone - released).kvMilliseconds) stop=\((transcribeStart - tailDone).kvMilliseconds) speech=\((transcribed - transcribeStart).kvMilliseconds) text=\((processed - transcribed).kvMilliseconds) (paste lands ~30 ms later, see 'paste posted')")
                 let appName = NSRunningApplication(processIdentifier: target)?.localizedName
-                HistoryStore.shared.add(HistoryEntry(
+                self.history.add(HistoryEntry(
                     id: UUID(),
                     timestamp: Date(),
                     text: cleaned,

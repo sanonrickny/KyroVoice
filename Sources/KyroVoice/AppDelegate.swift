@@ -32,6 +32,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             OverlayCheck.run()
         }
 
+        // Measures audio lost at the press and replays speech through the pipeline.
+        if CommandLine.arguments.contains("--capture-check") {
+            CaptureCheck.run()
+            return
+        }
+
         // Types a sample into its own window and checks the clipboard is untouched.
         // Deferred: the app cannot activate its window until launch finishes,
         // and the check needs key-window focus to read back what it typed.
@@ -73,6 +79,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        recorder.keepReady = settings.keepMicReady
+        settings.$keepMicReady
+            .dropFirst()
+            .sink { [weak self] on in self?.recorder.keepReady = on }
+            .store(in: &cancellables)
+
         // Prepare audio engine + request mic permission on launch.
         Task {
             do {
@@ -92,10 +104,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // makes the first dictation after wake slow. Warm it again.
         NSWorkspace.shared.notificationCenter
             .publisher(for: NSWorkspace.didWakeNotification)
-            .sink { [whisper] _ in
+            .sink { [whisper, weak self] _ in
                 AudioRecorder.prewarmInputDevice()
+                // A fresh standby engine, once coreaudiod has settled after wake.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    self?.recorder.refreshStandby()
+                }
                 Task.detached(priority: .utility) { await whisper?.rewarm() }
             }
+            .store(in: &cancellables)
+
+        NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.willSleepNotification)
+            .sink { [weak self] _ in self?.recorder.suspendStandby() }
             .store(in: &cancellables)
 
         // Register the global hotkey.

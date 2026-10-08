@@ -58,7 +58,7 @@ HotkeyManager ──down/up──▶ DictationCoordinator
 | Type | File | Role |
 |---|---|---|
 | `DictationCoordinator` | `Core/DictationCoordinator.swift` | Pipeline orchestrator |
-| `AudioRecorder` | `Core/AudioRecorder.swift` | AVAudioEngine tap → 16 kHz Float32 PCM |
+| `AudioRecorder` | `Core/AudioRecorder.swift` | AVAudioEngine tap → 16 kHz Float32 PCM; standby engine keeps 0.4 s pre-roll so the first word survives |
 | `SpeechEngine` | `Core/Speech/SpeechEngine.swift` | Swift actor wrapping FluidAudio's Parakeet TDT |
 | `TextProcessor` | `Core/TextProcessor.swift` | Mode-gated rule pipeline (offline) |
 | `ClipboardInjector` | `Services/ClipboardInjector.swift` | Pasteboard+⌘V or AX text insertion |
@@ -119,6 +119,11 @@ There is no test target. Two runnable checks live behind CLI flags:
 ./.build/release/KyroVoice --self-check     # instant, offline: TextProcessor rules
 ./.build/release/KyroVoice --speech-check   # end-to-end: `say` -> SpeechEngine -> TextProcessor
 ./.build/release/KyroVoice --overlay-check  # HUD phase -> panel visibility
+
+# Mic pre-roll and device switching. --audible plays speech out loud and runs
+# it through the real coordinator to show the first word survives the press.
+open -n -W --stdout /tmp/capture.out --stderr /tmp/capture.out \
+    -a .build/KyroVoice.app --args --capture-check [--audible]; cat /tmp/capture.out
 
 # --typing-check posts real key events, so it needs the bundle's Accessibility
 # grant: run it through LaunchServices, not from the terminal binary.

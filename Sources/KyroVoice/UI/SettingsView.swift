@@ -522,6 +522,15 @@ struct SettingsView: View {
                     }
                 }
 
+                card {
+                    pickerRow(label: "Keep microphone ready",
+                              hint: "Catches the first word. The mic indicator stays on.") {
+                        Toggle("", isOn: $settings.keepMicReady)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                    }
+                }
+
                 infoNote("Type text never touches your clipboard. Pasteboard briefly swaps your clipboard for the dictation; use it if an app drops typed characters. Accessibility is faster in Cocoa apps but unreliable in Electron-based apps.")
             }
             .padding(24)

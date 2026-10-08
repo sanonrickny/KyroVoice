@@ -108,7 +108,7 @@ sequenceDiagram
     HK->>DC: onHotkeyDown (hopped to main queue)
     DC->>DC: capture frontmost PID
     DC->>AR: start()
-    AR->>AR: build fresh AVAudioEngine + install tap
+    AR->>AR: keep standby pre-roll (or build fresh engine + tap)
     DC->>OV: phase = .listening, show()
     loop every ~200 ms of audio
         AR-->>OV: pushLevel(rms) → waveform bars
@@ -240,9 +240,16 @@ deliberate:
 > `installTapOnBus:` raises an `NSException` on every subsequent attempt and the
 > process aborts.
 
-That was a real multi-day-uptime crash. Building a fresh engine per recording
-costs 10-50 ms, which hides under hotkey-down latency. Three further guards
-back it up:
+That was a real multi-day-uptime crash. A cold start per press, though, loses
+the first word: the built-in mic delivers its first sample 90-270 ms after the
+press and then ~140 ms of silence while it powers up. So by default
+(**Keep microphone ready**) one engine runs between recordings and the last
+0.4 s before the press become the start of the recording. That engine is still
+disposable: it is dropped before sleep, rebuilt 2 s after wake, rebuilt fresh
+on every `AVAudioEngineConfigurationChange`, never restarted in place, and
+skipped for Bluetooth input (an open headset mic drops playback to call
+quality). If it has stalled, a press falls back to the cold path. Three further
+guards back it up:
 
 1. **The tap call lives in Objective-C.** `KVAudioEngineHelper` (`Sources/KyroVoiceObjC/`)
    wraps `startAndReturnError:`, `installTapOnBus:` and `removeTapOnBus:` in

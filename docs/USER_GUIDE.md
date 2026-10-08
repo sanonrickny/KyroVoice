@@ -204,7 +204,17 @@ the text back, not as a searchable archive.
 
 ---
 
-## 8. Advanced: how text gets inserted
+## 8. Advanced
+
+**Keep microphone ready** (on by default) keeps the mic running between
+dictations, so a word you start as you press the hotkey is not cut off. macOS
+shows the microphone indicator the whole time. Nothing is kept or sent: only the
+last 0.4 s is held in memory, and it becomes part of a dictation only when you
+press the hotkey. Bluetooth mics always start on the press instead, since holding
+one open drops your headphones to call-quality audio. Turn it off and the first
+word can be clipped if you speak at the same instant you press.
+
+### How text gets inserted
 
 **Settings → Advanced → Text injection**. Change this only if the default is
 misbehaving.

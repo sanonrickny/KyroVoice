@@ -19,6 +19,7 @@ public final class SettingsStore: ObservableObject {
         // install, and that default is what clobbered the user's clipboard.
         static let injectionMode    = "kv.injection.strategy"
         static let downloadedModels = "kv.downloadedModels"
+        static let keepMicReady     = "kv.keepMicReady"
     }
 
     @Published public var mode: DictationMode {
@@ -39,6 +40,10 @@ public final class SettingsStore: ObservableObject {
     @Published public var injectionStrategy: InjectionStrategyKind {
         didSet { defaults.set(injectionStrategy.rawValue, forKey: Key.injectionMode) }
     }
+    /// Keeps the mic open between dictations so the first word isn't cut.
+    @Published public var keepMicReady: Bool {
+        didSet { defaults.set(keepMicReady, forKey: Key.keepMicReady) }
+    }
     @Published public var downloadedModels: Set<String> {
         didSet { defaults.set(Array(downloadedModels), forKey: Key.downloadedModels) }
     }
@@ -52,6 +57,7 @@ public final class SettingsStore: ObservableObject {
         let downloaded   = Set(defaults.stringArray(forKey: Key.downloadedModels) ?? [])
 
         self.mode             = DictationMode(rawValue: modeRaw) ?? .normal
+        self.keepMicReady     = defaults.object(forKey: Key.keepMicReady) as? Bool ?? true
         self.downloadedModels = downloaded
 
         // Guard: if stored model requires explicit download but hasn't been downloaded,
