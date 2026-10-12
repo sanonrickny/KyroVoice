@@ -37,13 +37,15 @@ public enum AudioRecorderError: Error, LocalizedError {
 /// NSException on every subsequent attempt and the process aborts. That is
 /// exactly the multi-day-uptime crash this app was dying from.
 ///
-/// A cold start loses the start of speech: measured on the built-in mic, the
-/// first sample lands 90-150 ms after the press and the next ~140 ms are
+/// A cold start cannot hear the start of speech: measured on the built-in mic,
+/// the first sample lands 90-270 ms after the press and the next ~140 ms are
 /// silence while the mic powers up, so "Use sub-agents" came out as "So
-/// agents". With `keepReady` the engine instead stays running between
-/// recordings and the last `preRoll` seconds before the press are kept. That
-/// engine is still disposable: it is dropped on sleep and on any configuration
-/// change and rebuilt fresh, never reused, so the crash above cannot recur.
+/// agents". `start(onLive:)` reports the moment audio is really arriving, and
+/// the HUD only says "listening" from then on. The opt-in `keepReady` instead
+/// keeps the engine running between recordings with `preRoll` seconds of
+/// audio from before the press. That engine is still disposable: it is
+/// dropped on sleep and on any configuration change and rebuilt fresh, never
+/// reused, so the crash above cannot recur.
 @MainActor
 public final class AudioRecorder {
     public typealias LevelHandler = @Sendable (Float) -> Void
@@ -59,8 +61,8 @@ public final class AudioRecorder {
     public nonisolated static let preRoll: TimeInterval = 0.4
 
     /// Keep the microphone running between recordings so a press starts
-    /// capturing instantly, with `preRoll` of audio from before it. Turns the
-    /// system microphone indicator on while idle. Ignored for Bluetooth input:
+    /// capturing instantly, with `preRoll` of audio from before it. Off by
+    /// default: it turns the system microphone indicator on while idle. Ignored for Bluetooth input:
     /// holding a headset mic open drops its playback to call quality.
     public var keepReady = false {
         didSet { refreshStandby() }
@@ -89,6 +91,9 @@ public final class AudioRecorder {
     private nonisolated(unsafe) var capturedEnd: TimeInterval = 0
     /// Host-clock seconds of the first captured sample in this recording.
     private nonisolated(unsafe) var capturedStart: TimeInterval = 0
+    /// Called once per recording, from the audio thread, when the mic is live.
+    private nonisolated(unsafe) var onLive: (@Sendable () -> Void)?
+    private nonisolated(unsafe) var startedAt: TimeInterval = 0
 
     public init() {}
 
@@ -228,7 +233,15 @@ public final class AudioRecorder {
 
     // MARK: - Capture control
 
-    public func start() throws {
+    /// Below this, a 20 ms window is the powering-up mic, not a room: the dead
+    /// window measures 0.0000-0.0001 RMS, a quiet room 0.0015 and up.
+    private nonisolated static let liveRMS: Float = 0.0003
+    /// Says "live" anyway after this, for an input that is digitally silent.
+    private nonisolated static let liveFallback: TimeInterval = 0.6
+
+    /// `onLive` fires once, on the audio thread, when the mic is really
+    /// hearing: at once from standby, else when the power-up silence ends.
+    public func start(onLive: (@Sendable () -> Void)? = nil) throws {
         switch state {
         case .ready, .idle: break
         case .denied:    throw AudioRecorderError.microphoneDenied
@@ -247,6 +260,7 @@ public final class AudioRecorder {
             capturing = true
             lock.unlock()
             state = .recording
+            onLive?()
             return
         }
 
@@ -258,6 +272,8 @@ public final class AudioRecorder {
         converter = nil
         capturedEnd = 0
         capturedStart = 0
+        self.onLive = onLive
+        startedAt = Self.hostNow()
         capturing = true
         lock.unlock()
 
@@ -327,6 +343,7 @@ public final class AudioRecorder {
     public func stop() -> [Float] {
         lock.lock()
         capturing = false
+        onLive = nil
         let captured = samples
         // Cleared, not kept as pre-roll: the next press must not replay the
         // end of this dictation.
@@ -441,7 +458,19 @@ public final class AudioRecorder {
         }
         if capturedStart == 0 { capturedStart = end - Double(count) / Self.targetSampleRate }
         capturedEnd = end
+        // Live once a buffer *ends* with sound: the first one carries a short
+        // burst and then the power-up silence.
+        var live: (@Sendable () -> Void)?
+        if capturing, let cb = onLive {
+            let tail = UnsafeBufferPointer(start: channelPtr + max(0, count - 320), count: min(count, 320))
+            let tailRMS = (tail.reduce(Float(0)) { $0 + $1 * $1 } / Float(tail.count)).squareRoot()
+            if tailRMS > Self.liveRMS || end - startedAt > Self.liveFallback {
+                live = cb
+                onLive = nil
+            }
+        }
         lock.unlock()
+        live?()
     }
 
     // MARK: - Helpers

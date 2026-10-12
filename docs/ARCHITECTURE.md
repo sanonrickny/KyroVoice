@@ -108,7 +108,8 @@ sequenceDiagram
     HK->>DC: onHotkeyDown (hopped to main queue)
     DC->>DC: capture frontmost PID
     DC->>AR: start()
-    AR->>AR: keep standby pre-roll (or build fresh engine + tap)
+    AR->>AR: build fresh AVAudioEngine + install tap (or keep standby pre-roll)
+    AR-->>DC: onLive, once the mic really hears (~0.4 s cold)
     DC->>OV: phase = .listening, show()
     loop every ~200 ms of audio
         AR-->>OV: pushLevel(rms) → waveform bars
@@ -240,12 +241,16 @@ deliberate:
 > `installTapOnBus:` raises an `NSException` on every subsequent attempt and the
 > process aborts.
 
-That was a real multi-day-uptime crash. A cold start per press, though, loses
-the first word: the built-in mic delivers its first sample 90-270 ms after the
-press and then ~140 ms of silence while it powers up. So by default
-(**Keep microphone ready**) one engine runs between recordings and the last
-0.4 s before the press become the start of the recording. That engine is still
-disposable: it is dropped before sleep, rebuilt 2 s after wake, rebuilt fresh
+That was a real multi-day-uptime crash. A cold start per press, though, is
+deaf at first: the built-in mic delivers its first sample 90-270 ms after the
+press and then ~140 ms of silence while it powers up, and a word started with
+the press was lost. The mic stays off between dictations, so the pebble is the
+cue instead: `start(onLive:)` fires once a tap buffer *ends* with real sound
+(20 ms RMS above 0.0003; the power-up silence measures 0.0000-0.0001), and only
+then does the coordinator set `.listening`. Measured: mic hears from ~285 ms,
+pebble at ~395 ms. The opt-in **Keep microphone ready** instead runs one engine
+between recordings, and the last 0.4 s before the press becomes the start of
+the recording. That engine is still disposable: it is dropped before sleep, rebuilt 2 s after wake, rebuilt fresh
 on every `AVAudioEngineConfigurationChange`, never restarted in place, and
 skipped for Bluetooth input (an open headset mic drops playback to call
 quality). If it has stalled, a press falls back to the cold path. Three further

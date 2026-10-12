@@ -524,7 +524,7 @@ struct SettingsView: View {
 
                 card {
                     pickerRow(label: "Keep microphone ready",
-                              hint: "Catches the first word. The mic indicator stays on.") {
+                              hint: "Start talking the instant you press. The mic indicator stays on.") {
                         Toggle("", isOn: $settings.keepMicReady)
                             .labelsHidden()
                             .toggleStyle(.switch)

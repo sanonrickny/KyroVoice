@@ -41,6 +41,7 @@ public final class SettingsStore: ObservableObject {
         didSet { defaults.set(injectionStrategy.rawValue, forKey: Key.injectionMode) }
     }
     /// Keeps the mic open between dictations so the first word isn't cut.
+    /// Off by default: the user does not want an always-open mic.
     @Published public var keepMicReady: Bool {
         didSet { defaults.set(keepMicReady, forKey: Key.keepMicReady) }
     }
@@ -57,7 +58,7 @@ public final class SettingsStore: ObservableObject {
         let downloaded   = Set(defaults.stringArray(forKey: Key.downloadedModels) ?? [])
 
         self.mode             = DictationMode(rawValue: modeRaw) ?? .normal
-        self.keepMicReady     = defaults.object(forKey: Key.keepMicReady) as? Bool ?? true
+        self.keepMicReady     = defaults.object(forKey: Key.keepMicReady) as? Bool ?? false
         self.downloadedModels = downloaded
 
         // Guard: if stored model requires explicit download but hasn't been downloaded,

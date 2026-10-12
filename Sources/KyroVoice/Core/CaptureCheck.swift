@@ -6,15 +6,17 @@ import CoreAudio
 /// Runnable check for "the first words of a dictation are missing".
 ///
 /// 1. Lag: how much audio before (or after) the press a recording holds, cold
-///    and with the standby microphone.
+///    and with the standby microphone, and that the cold "mic is live" cue
+///    never fires while the mic is still deaf.
 /// 2. Device churn: the default input switches to another device and back,
 ///    idle and mid-recording, and capture keeps working. A long-lived engine is
 ///    what crashed this app before, so the standby one must survive this.
-/// 3. End to end: speech plays from the MacBook speakers starting exactly at
-///    the press (and once 150 ms before it), and goes through the real
-///    DictationCoordinator, Parakeet, TextProcessor and typing injector. The
-///    typed text is swallowed by an event tap and its first words compared.
-///    The cold run reproduces the bug and is reported, not asserted.
+/// 3. End to end: speech plays from the MacBook speakers and goes through the
+///    real DictationCoordinator, Parakeet, TextProcessor and typing injector.
+///    The typed text is swallowed by an event tap and its first word compared.
+///    Cold, speech starting when the pebble appears must survive; speech
+///    starting at the press reproduces the original bug and is only reported.
+///    With standby, speech at the press or 150 ms before it must survive.
 ///
 /// Needs the bundle's Microphone grant (and Accessibility for part 3), so
 /// launch it through LaunchServices:
@@ -26,6 +28,9 @@ import CoreAudio
 /// ponytail: asserts and a counter, no framework. Briefly changes the default
 /// input device (restored before exit).
 private nonisolated(unsafe) var typed = ""
+/// Host time the recorder said "live". Written on the audio thread, read
+/// after the trial has slept past it.
+private nonisolated(unsafe) var cueAt: TimeInterval = 0
 
 @MainActor
 enum CaptureCheck {
@@ -60,6 +65,7 @@ enum CaptureCheck {
             let lead = await trial(recorder)
             print(String(format: "  info  cold     %+5.0f ms", lead * 1000))
         }
+        for _ in 0..<3 { await cueTrial(recorder) }
         recorder.keepReady = true
         await sleep(1)
         for _ in 0..<3 {
@@ -128,6 +134,29 @@ enum CaptureCheck {
         return press - first
     }
 
+    /// The cold cue must come after the mic's power-up silence, never during.
+    private static func cueTrial(_ recorder: AudioRecorder) async {
+        await sleep(0.6)
+        cueAt = 0
+        let press = AudioRecorder.hostNow()
+        do { try recorder.start { cueAt = AudioRecorder.hostNow() } } catch {
+            print("  FAIL  start: \(error.localizedDescription)"); failures += 1; return
+        }
+        await sleep(0.8)
+        let first = recorder.capturedFrom()
+        let samples = recorder.stop()
+        // End of the last deaf 20 ms window in the first 600 ms.
+        let windows = Array(stride(from: 0, to: min(samples.count, 9_600) - 320, by: 320))
+        let lastDeaf = windows.last { start in
+            let w = samples[start..<start + 320]
+            return (w.reduce(Float(0)) { $0 + $1 * $1 } / 320).squareRoot() < 0.0003
+        }
+        let hears = first + Double((lastDeaf ?? -320) + 320) / AudioRecorder.targetSampleRate
+        expect(cueAt > 0 && cueAt >= hears,
+               String(format: "cold cue %3.0f ms after press, mic hears from %3.0f ms",
+                      (cueAt - press) * 1000, (hears - press) * 1000))
+    }
+
     // MARK: - End to end
 
     private static func endToEnd(_ recorder: AudioRecorder) async {
@@ -152,28 +181,34 @@ enum CaptureCheck {
         }
         let player = Player(device: speakers)
 
+        enum Start: String { case early = "150ms early", press = "at press", cue = "at pebble" }
         let phrases = ["Use sub agents if needed.", "Please send the report to Marcus before Friday."]
         for ready in [false, true] {
             recorder.keepReady = ready
             await sleep(1.5)
             for phrase in phrases {
-                for early in [0.0, 0.15] {
+                for start in ready ? [Start.press, .early] : [.press, .cue] {
                     guard let speech = player.load(phrase) else {
                         print("  FAIL  say"); failures += 1; continue
                     }
                     typed = ""
-                    player.play(speech)
-                    await sleep(early)
+                    if start == .early { player.play(speech); await sleep(0.15) }
                     press(coordinator)
-                    await sleep(Double(speech.frameLength) / speech.format.sampleRate - early + 0.25)
+                    if start == .press { player.play(speech) }
+                    if start == .cue {
+                        for _ in 0..<200 where state.phase != .listening { await sleep(0.005) }
+                        player.play(speech)
+                    }
+                    await sleep(Double(speech.frameLength) / speech.format.sampleRate + 0.25)
                     release(coordinator)
                     for _ in 0..<60 where typed.isEmpty { await sleep(0.1) }
                     await sleep(0.3)
                     // First word only: speaker-to-mic playback turns "sub" into
                     // "of" now and then even with capture fully live.
                     let want = words(phrase).prefix(1), got = words(typed).prefix(1)
-                    let label = "\(ready ? "standby" : "cold   ") speech \(early == 0 ? "at press  " : "150ms early") \"\(typed)\""
-                    if ready { expect(got == want, label) } else { print("  \(got == want ? "info" : "LOST")  \(label)") }
+                    let label = "\(ready ? "standby" : "cold   ") speech \(start.rawValue) \"\(typed)\""
+                    if ready || start == .cue { expect(got == want, label) }
+                    else { print("  \(got == want ? "info" : "LOST")  \(label)") }
                 }
             }
         }

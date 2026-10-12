@@ -31,6 +31,8 @@ public final class DictationCoordinator: ObservableObject {
     /// People tend to release the key while still saying the last word.
     private static let tailCapture: TimeInterval = 0.15
     private var targetPID: pid_t = 0
+    /// Tells a late "mic is live" callback which recording it belongs to.
+    private var recordingID = 0
     private var cancellables = Set<AnyCancellable>()
 
     public init(
@@ -130,12 +132,23 @@ public final class DictationCoordinator: ObservableObject {
         // Capture target app PID now — before transcription delay shifts focus.
         targetPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
         NSLog("KyroVoice: target PID=\(targetPID)")
+        recordingID &+= 1
+        let id = recordingID
         do {
-            try recorder.start()
+            // The pebble appears only once the mic really hears: a cold mic
+            // is deaf for ~250 ms after the press, and "listening" shown
+            // before that is what got the first word lost.
+            try recorder.start { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.recordingID == id, self.isRecording, self.tailTask == nil else { return }
+                    self.overlayState.phase = .listening
+                }
+            }
             isRecording = true
             pressedAt = ContinuousClock.now
             overlayState.resetLevels()
-            overlayState.phase = .listening
+            // Clears a previous result still on screen until the mic is live.
+            overlayState.phase = .hidden
             NSLog("KyroVoice: recording started — recorderState=\(recorder.state)")
         } catch {
             NSLog("KyroVoice: startRecording failed — \(error.localizedDescription)")

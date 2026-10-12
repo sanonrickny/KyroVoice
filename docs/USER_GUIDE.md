@@ -206,13 +206,16 @@ the text back, not as a searchable archive.
 
 ## 8. Advanced
 
-**Keep microphone ready** (on by default) keeps the mic running between
-dictations, so a word you start as you press the hotkey is not cut off. macOS
-shows the microphone indicator the whole time. Nothing is kept or sent: only the
-last 0.4 s is held in memory, and it becomes part of a dictation only when you
-press the hotkey. Bluetooth mics always start on the press instead, since holding
-one open drops your headphones to call-quality audio. Turn it off and the first
-word can be clipped if you speak at the same instant you press.
+The microphone is only on while you hold the hotkey. It needs about a quarter
+second to wake up, so the pebble appears once it can hear you: **start talking
+when the pebble shows**. Words spoken before that are not heard.
+
+**Keep microphone ready** (off by default) keeps the mic running between
+dictations instead, so you can talk the instant you press. macOS shows the
+microphone indicator the whole time. Nothing is kept or sent: only the last
+0.4 s is held in memory, and it becomes part of a dictation only when you press
+the hotkey. Bluetooth mics ignore this setting, since holding one open drops
+your headphones to call-quality audio.
 
 ### How text gets inserted
 

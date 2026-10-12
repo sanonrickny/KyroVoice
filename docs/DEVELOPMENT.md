@@ -127,9 +127,10 @@ them exit the process rather than starting the UI.
 ./.build/release/KyroVoice --self-check     # instant, offline: TextProcessor rules
 ./.build/release/KyroVoice --speech-check   # end-to-end, downloads the model on first run
 
-# Mic capture: pre-roll at the press, default-input switches. --audible also
-# plays speech from the MacBook speakers at the press and runs it through the
-# whole pipeline, cold vs standby. Needs the bundle's mic grant.
+# Mic capture: the cold "live" cue never fires while the mic is still deaf,
+# standby pre-roll, default-input switches. --audible also plays speech from the
+# MacBook speakers and runs it through the whole pipeline. Needs the bundle's
+# mic grant; quit the installed app first so the mic starts cold.
 open -n -W --stdout /tmp/capture.out --stderr /tmp/capture.out \
     -a .build/KyroVoice.app --args --capture-check [--audible]; cat /tmp/capture.out
 ```
