@@ -91,7 +91,7 @@ Sources/KyroVoice/
 │   ├── HistoryStore.swift           history.json, 24 h TTL
 │   └── Speech/
 │       ├── SpeechEngine.swift          actor around FluidAudio AsrManager
-│       ├── ModelVariant.swift          v2 / v3 metadata
+│       ├── ModelVariant.swift          v2 / Ultra metadata
 │       └── SpeechEngineSelfCheck.swift --speech-check
 ├── Models/
 │   ├── DictationMode.swift      normal / email / code

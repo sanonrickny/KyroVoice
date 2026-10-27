@@ -259,7 +259,7 @@ struct SettingsView: View {
                     }
                 }
 
-                infoNote("Parakeet v2 downloads on first use. Parakeet v3 must be downloaded before selection. Both run entirely on-device on the Neural Engine.")
+                infoNote("Parakeet v2 downloads on first use. Parakeet Ultra must be downloaded before selection. Both run entirely on-device on the Neural Engine.")
             }
             .padding(24)
         }

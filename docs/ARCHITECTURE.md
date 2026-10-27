@@ -305,10 +305,10 @@ so the first hotkey press is not the first time CoreML sees the model.
 | Variant | Size | WER | Languages | Download |
 |---|---|---|---|---|
 | `parakeet-tdt-0.6b-v2` (default) | ≈450 MB | 2.1% | English | automatic on first use |
-| `parakeet-tdt-0.6b-v3` | ≈600 MB | 2.6% | 25 European | explicit, from Settings → Models |
+| `parakeet-ultra` (post-trained v3) | ≈630 MB | 2.1% | 25 European | explicit, from Settings → Models |
 
 `requiresExplicitDownload` exists so the user is never surprised by a second
-600 MB transfer. `SettingsStore` records completed downloads in
+630 MB transfer. `SettingsStore` records completed downloads in
 `kv.downloadedModels` and falls back to v2 if the stored variant is not on disk.
 
 Parakeet emits punctuation, capitalization and inverse text normalization

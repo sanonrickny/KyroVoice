@@ -174,14 +174,14 @@ need both.
 | Model | Size | Accuracy | Languages |
 |---|---|---|---|
 | **Parakeet v2 · English** (default) | ≈450 MB | 2.1% word error rate | English |
-| **Parakeet v3 · Multilingual** | ≈600 MB | 2.6% word error rate | 25 European languages |
+| **Parakeet Ultra · Multilingual** | ≈630 MB | 2.1% word error rate | 25 European languages |
 
-v2 downloads automatically the first time you dictate. v3 is opt-in: click
+v2 downloads automatically the first time you dictate. Ultra is opt-in: click
 **Download** and wait. The download can be cancelled, and if it already finished
 the bytes are kept so you never re-download.
 
-Stick with v2 unless you dictate in a language other than English. It is both
-smaller and more accurate for English.
+Stick with v2 unless you dictate in a language other than English. It is
+smaller and just as accurate for English.
 
 Models are stored in `~/Library/Application Support/FluidAudio/Models`.
 
