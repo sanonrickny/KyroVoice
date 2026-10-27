@@ -206,10 +206,12 @@ public final class DictationCoordinator: ObservableObject {
                 let transcribeStart = clock.now
                 let raw = try await self.whisper.transcribe(samples: samples)
                 let transcribed = clock.now
-                NSLog("KyroVoice: raw='\(raw)'")
                 let cleaned = self.processor.process(raw, mode: resolvedMode)
                 let processed = clock.now
-                NSLog("KyroVoice: cleaned='\(cleaned)'")
+                // Lengths only: NSLog is public in the unified log, so dictated
+                // text would be readable by anything that collects logs.
+                // History keeps the text itself.
+                NSLog("KyroVoice: text raw=\(raw.count) chars cleaned=\(cleaned.count) chars")
                 guard !Task.isCancelled else { return }
                 guard !cleaned.isEmpty else {
                     NSLog("KyroVoice: cleaned text empty — showing 'No speech detected'")
