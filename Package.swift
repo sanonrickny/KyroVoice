@@ -9,7 +9,7 @@ let package = Package(
     ],
     dependencies: [
         // No NeMo text normalizer: it only serves TTS, and Parakeet does its own ITN.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.7", traits: [])
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7", traits: [])
     ],
     targets: [
         .target(
