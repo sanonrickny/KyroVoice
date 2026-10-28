@@ -9,7 +9,11 @@
       "Bash(chmod +x *)",
       "Bash(codesign -vvv /Users/rick3.0/KyroVoice/.build/KyroVoice.app)",
       "Bash(log show *)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(git fetch *)",
+      "Bash(swift /private/tmp/claude-501/-Users-rick3-0-KyroVoice/210f2206-0c38-425b-8e30-1ab71b7793a6/scratchpad/running.swift)",
+      "Bash(defaults read *)",
+      "Bash(defaults find *)"
     ]
   }
 }
