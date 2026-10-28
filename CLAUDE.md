@@ -32,82 +32,17 @@ Rick runs `/Applications/KyroVoice.app`, so use `make install`, not `make run`, 
 
 KyroVoice is a **macOS menu-bar app** (no main window) that performs local-on-device voice dictation via NVIDIA Parakeet TDT (CoreML, Apple Neural Engine) and injects transcribed text into the focused app.
 
-### Dependency graph (wired in `AppDelegate.applicationDidFinishLaunching`)
+`KyroVoiceObjC` exists only so `KVAudioEngineHelper` can wrap `AVAudioEngine` start in `@try`/`@catch`: Swift cannot catch ObjC exceptions.
 
-```
-HotkeyManager ──down/up──▶ DictationCoordinator
-                                   │
-              ┌────────────────────┼────────────────────┐
-              ▼                    ▼                    ▼
-        AudioRecorder         SpeechEngine         TextProcessor
-         (AVAudioEngine)      (FluidAudio actor)   (rule pipeline)
-                                                        │
-                                                        ▼
-                                               ClipboardInjector
-                                           (pasteboard+⌘V or AX)
-              ┌──────────────────────────────────────────┘
-              ▼
-        ModeResolver        OverlayState ◀── FloatingOverlay (NSPanel)
-      (frontmost app BID)
-```
+FluidAudio's default `NemoTextProcessing` trait (a prebuilt Rust text normalizer for TTS) is disabled with `traits: []`, which needs swift-tools-version 6.1; `swiftLanguageModes: [.v5]` keeps the Swift 5 concurrency checks.
 
-`DictationCoordinator` is the central pipeline: hotkey-down starts recording, hotkey-up stops and kicks off `speech → processor → injector`. Everything is `@MainActor` except `SpeechEngine` (a Swift `actor`).
-
-### Key types
-
-| Type | File | Role |
-|---|---|---|
-| `DictationCoordinator` | `Core/DictationCoordinator.swift` | Pipeline orchestrator |
-| `AudioRecorder` | `Core/AudioRecorder.swift` | AVAudioEngine tap → 16 kHz Float32 PCM; `start(onLive:)` cues the HUD once the cold mic really hears (~0.4 s); opt-in standby keeps 0.4 s pre-roll |
-| `SpeechEngine` | `Core/Speech/SpeechEngine.swift` | Swift actor wrapping FluidAudio's Parakeet TDT |
-| `TextProcessor` | `Core/TextProcessor.swift` | Mode-gated rule pipeline (offline) |
-| `ClipboardInjector` | `Services/ClipboardInjector.swift` | Pasteboard+⌘V or AX text insertion |
-| `ModeResolver` | `Services/ModeResolver.swift` | Maps frontmost app bundle ID → `DictationMode` |
-| `HotkeyManager` | `Services/HotkeyManager.swift` | Carbon `RegisterEventHotKey` (press + release) |
-| `SettingsStore` | `Settings/SettingsStore.swift` | `@MainActor` singleton backed by `UserDefaults` |
-| `FloatingOverlay` | `UI/FloatingOverlay.swift` | Borderless `NSPanel` with SwiftUI waveform HUD |
-| `MenuBarController` | `UI/MenuBarController.swift` | `NSStatusItem` + `NSMenu` |
-| `OverlayState` | `UI/OverlayState.swift` | Observable phase enum: hidden/listening/processing/injected/error |
-
-### Swift package targets
-
-- **`KyroVoice`** — main executable (`Sources/KyroVoice/`)
-- **`KyroVoiceObjC`** — thin Objective-C shim (`Sources/KyroVoiceObjC/`) providing `KVAudioEngineHelper` to safely wrap `AVAudioEngine` start in an ObjC `@try`/`@catch` block (Swift cannot catch ObjC exceptions).
-
-Dependency: `FluidAudio` from `https://github.com/FluidInference/FluidAudio` (≥ 0.15.7), Apache 2.0, no transitive dependencies. Its default `NemoTextProcessing` trait (a prebuilt Rust text normalizer for TTS) is disabled with `traits: []`, which needs swift-tools-version 6.1; `swiftLanguageModes: [.v5]` keeps the Swift 5 concurrency checks. Deployment target is macOS 14 (FluidAudio's floor).
-
-### Dictation modes & text processing
-
-`DictationMode` has three values (`normal`, `email`, `code`). `ModeResolver` selects the mode automatically from the frontmost app's bundle ID (VS Code, Xcode, iTerm → `.code`; Mail, Outlook → `.email`; otherwise the user's default). `TextProcessor` runs a deterministic rule pipeline per mode:
-
-- **normal**: unicode normalization → whitespace normalization → filler stripping → repeat collapsing ("the the" → "the") → punctuation spacing → sentence capitalization
-- **email**: normal + contraction expansion + small number spelling
-- **code**: unicode + whitespace + spoken-syntax expansion (`"open paren"` → `(`) + case conversion (`"camel case foo bar"` → `fooBar`) + symbol spacing
-
-### Text injection strategies (`InjectionStrategyKind`)
-
-- **typing** (default): posts the text as synthetic Unicode key events (`keyboardSetUnicodeString`), at most 20 UTF-16 units per event, split only between Characters, with the modifier flags explicitly cleared. The clipboard is never touched. Checked by `--typing-check`.
-- **pasteboard**: snapshots the current pasteboard, writes text, posts synthetic ⌘V after 30 ms, then restores the original pasteboard 400 ms later. The escape hatch for apps that read the virtual key code instead of the Unicode string.
-- **accessibility**: uses `AXUIElementSetAttributeValue(kAXSelectedTextAttribute)` — works in Cocoa apps, unreliable in Electron/web.
-- **auto**: tries AX, falls back to pasteboard on error.
-
-### Permissions required
-
-Microphone, Accessibility, and Input Monitoring. `PermissionsService` (`@MainActor`) probes and requests each. Accessibility is needed for `ClipboardInjector.axInject`; Input Monitoring is needed to post synthetic `CGEvent` key presses.
-
-### Hotkey configuration
-
-Hardcoded default is ⌘⇧Space (`HotkeyConfig.default`). To change it, edit `Sources/KyroVoice/Models/HotkeyConfig.swift` and rebuild. The `HotkeyMode` enum supports `pushToTalk` (hold) and `toggle` (tap).
+Default text injection is synthetic Unicode typing, so the clipboard is never touched. Pasteboard+⌘V is the escape hatch for apps that read the virtual key code instead of the Unicode string; AX insertion works in Cocoa apps but is unreliable in Electron/web.
 
 ### Code-signing & TCC
 
 `./setup_deps.sh` creates a self-signed certificate in a dedicated keychain (`~/Library/Keychains/kyro-build.keychain-db`). The build signs the bundle with this identity so macOS keeps TCC grants across rebuilds. Without this setup, permissions must be re-granted after every build. The app is **not sandboxed** (`com.apple.security.app-sandbox = false`).
 
-### Whisper model storage
-
-Models are downloaded by FluidAudio on first use into `~/Library/Application Support/FluidAudio/Models`. Available variants: `parakeet-tdt-0.6b-v2` (≈450 MB, English, 2.1% WER, default) and `parakeet-tdt-0.6b-v3` (≈600 MB, 25 European languages, 2.6% WER).
-
-User word replacements live in `~/Library/Application Support/KyroVoice/replacements.txt` (`heard => written`, one per line), opened from the menu bar's "Word Replacements…". `TextProcessor` applies them last, in every mode.
+### Speech model
 
 Parakeet emits punctuation, capitalization and inverse text normalization itself ("nine thirty" -> "9.30"), so `TextProcessor` receives already-formatted text.
 
